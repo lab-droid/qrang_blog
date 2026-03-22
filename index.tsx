@@ -29,7 +29,7 @@ const styles = {
     fontFamily: '"Pretendard", -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif',
     minHeight: '100vh',
     position: 'relative' as 'relative',
-    backgroundColor: '#f0f4f8',
+    backgroundColor: '#f8fafc',
     overflowX: 'hidden' as 'hidden',
     paddingBottom: '80px',
   },
@@ -38,12 +38,12 @@ const styles = {
     top: 0,
     left: 0,
     width: '100%',
-    height: '380px',
-    background: 'linear-gradient(135deg, #004e92 0%, #000428 100%)',
-    borderBottomLeftRadius: '40px',
-    borderBottomRightRadius: '40px',
+    height: '420px',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    borderBottomLeftRadius: '50px',
+    borderBottomRightRadius: '50px',
     zIndex: 0,
-    boxShadow: '0 10px 40px rgba(0, 4, 40, 0.3)',
+    boxShadow: '0 15px 50px rgba(118, 75, 162, 0.25)',
   },
   apiKeyWrapper: {
     position: 'absolute' as 'absolute',
@@ -308,6 +308,7 @@ const styles = {
   recommendBtnGroup: {
     display: 'flex',
     gap: '10px',
+    flexWrap: 'wrap',
   },
   keywordBtn: {
     padding: '10px 18px',
@@ -618,7 +619,7 @@ const App = () => {
     }
   };
 
-  const handleRecommendKeywords = async (type: 'seo' | 'column') => {
+  const handleRecommendKeywords = async (type: 'seo' | 'column' | 'info' | 'comparison' | 'trend' | 'shortform' | 'ai_optimized' | 'seasonal' | 'persona' | 'promotion') => {
     if (!isApiKeyValid) {
       alert("API Key를 먼저 연결해주세요.");
       setShowApiKeyInput(true);
@@ -626,7 +627,19 @@ const App = () => {
     }
 
     setLoading(true);
-    setLoadingMessage(type === 'seo' ? "SEO 키워드 분석 중..." : "칼럼 키워드 도출 중...");
+    const loadingMessages = {
+      seo: "SEO 키워드 분석 중...",
+      column: "칼럼 키워드 도출 중...",
+      info: "정보성 꿀팁 키워드 도출 중...",
+      comparison: "비교/분석 키워드 도출 중...",
+      trend: "트렌드 키워드 도출 중...",
+      shortform: "숏폼/SNS 감성 키워드 도출 중...",
+      ai_optimized: "AI 검색(SGE) 최적화 키워드 도출 중...",
+      seasonal: "시즌/계절 맞춤형 키워드 도출 중...",
+      persona: "타겟 맞춤형 키워드 도출 중...",
+      promotion: "가성비/프로모션 키워드 도출 중..."
+    };
+    setLoadingMessage(loadingMessages[type]);
     
     // Instantiate locally to use the user's API key
     const ai = new GoogleGenAI({ apiKey: userApiKey });
@@ -638,10 +651,37 @@ const App = () => {
       : "";
 
     let prompt = "";
-    if (type === 'seo') {
-      prompt = `여행 캐리어(Suitcase)와 관련된 네이버 블로그 C-RANK 키워드 중, 현재 검색량이 많고 경쟁력이 있는 'SEO 최적화 키워드' 5개를 추천해줘. 또한 '스냅투고', '패커블백팩', '여행용품' 키워드도 확장하여 함께 고려해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
-    } else {
-      prompt = `'큐랑 캐리어(Q-Rang Carrier)'를 선택해야만 하는 확실한 이유와 매력을 어필하여 구매 욕구를 자극하는 '칼럼형/후기형 키워드' 5개를 추천해줘. 또한 '스냅투고', '패커블백팩', '여행용품' 키워드도 확장하여 함께 고려해줘. ${exclusionPrompt} 캐리어 선택에 결정 장애가 있는 다양한 타겟(신혼부부, 장기 여행자, 비즈니스맨 등)의 고민을 해결해주는 매력적인 문구여야 해. (예: 승무원이 몰래 쓰는 큐랑 캐리어의 비밀, 10만원대 갓성비 큐랑이 명품보다 나은 이유 등). 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+    switch (type) {
+      case 'seo':
+        prompt = `여행 캐리어(Suitcase)와 관련된 네이버 블로그 C-RANK 키워드 중, 현재 검색량이 많고 경쟁력이 있는 'SEO 최적화 키워드' 5개를 추천해줘. 또한 '스냅투고', '패커블백팩', '여행용품' 키워드도 확장하여 함께 고려해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        break;
+      case 'column':
+        prompt = `'큐랑 캐리어(Q-Rang Carrier)'를 선택해야만 하는 확실한 이유와 매력을 어필하여 구매 욕구를 자극하는 '칼럼형/후기형 키워드' 5개를 추천해줘. 또한 '스냅투고', '패커블백팩', '여행용품' 키워드도 확장하여 함께 고려해줘. ${exclusionPrompt} 캐리어 선택에 결정 장애가 있는 다양한 타겟(신혼부부, 장기 여행자, 비즈니스맨 등)의 고민을 해결해주는 매력적인 문구여야 해. (예: 승무원이 몰래 쓰는 큐랑 캐리어의 비밀, 10만원대 갓성비 큐랑이 명품보다 나은 이유 등). 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        break;
+      case 'info':
+        prompt = `여행 준비, 짐싸기 꿀팁, 수하물 규정 등 독자들에게 실질적인 도움을 주는 '정보성 키워드' 5개를 추천해줘. '스냅투고', '큐랑 캐리어'와 자연스럽게 연결될 수 있는 주제면 좋아. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        break;
+      case 'comparison':
+        prompt = `캐리어 사이즈 비교(20인치 vs 24인치), 소재 비교(PC vs ABS), 백팩 vs 캐리어 등 소비자의 구매 결정을 돕는 '비교/분석형 키워드' 5개를 추천해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        break;
+      case 'trend':
+        prompt = `최근 여행 트렌드, 호캉스, 촌캉스, 해외여행 필수템 등 최신 유행을 반영한 '트렌드/이슈형 키워드' 5개를 추천해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        break;
+      case 'shortform':
+        prompt = `인스타그램 릴스, 틱톡, 유튜브 쇼츠 등 숏폼 콘텐츠에 어울리는 톡톡 튀고 감성적인 'SNS/숏폼 감성 키워드' 5개를 추천해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        break;
+      case 'ai_optimized':
+        prompt = `최근 구글 SGE, 네이버 Cue: 등 AI 검색 엔진에서 답변으로 채택되기 좋은 'AI 검색 최적화(AIO) 키워드' 5개를 추천해줘. 질문형(Long-tail) 키워드나 명확한 정보성 의도를 담은 키워드가 좋아. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        break;
+      case 'seasonal':
+        prompt = `여름 휴가, 겨울 방학, 명절 연휴, 벚꽃 여행 등 특정 계절이나 시즌에 검색량이 급증하는 '시즌/계절 맞춤형 키워드' 5개를 추천해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        break;
+      case 'persona':
+        prompt = `신혼여행, 가족여행, 나홀로 여행, 출장(비즈니스) 등 특정 타겟층(페르소나)의 공감을 이끌어낼 수 있는 '타겟 맞춤형 키워드' 5개를 추천해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        break;
+      case 'promotion':
+        prompt = `가성비, 할인, 기내용 캐리어 추천, 10만원대 캐리어 등 가격 대비 성능을 중시하는 소비자를 위한 '가성비/프로모션 키워드' 5개를 추천해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        break;
     }
 
     try {
@@ -839,6 +879,7 @@ const App = () => {
           6. 마지막 줄 CTA: "[${brandName} 최저가 보러가기] ${isBackpack ? 'https://snaptogo.co.kr' : 'https://qrang.co.kr'}"
           7. 톤앤매너: 신뢰감 있으면서도 위트 있고, 소비자의 마음을 꿰뚫어 보는 듯한 통찰력 있는 톤.
           8. 마크다운 형식을 사용하지 말고 일반 텍스트로 줄바꿈을 활용해 작성하세요.
+          9. **중요**: HTML 태그를 사용하여 텍스트 색상(검정색, 파란색, 빨간색)과 배경 색상(노란색)을 적절히 사용하여 중요한 내용을 강조하세요. (예: <span style="color: blue;">파란색 텍스트</span>, <span style="color: red;">빨간색 텍스트</span>, <span style="background-color: yellow;">노란색 배경 강조</span>)
       `;
 
       if (referenceText) {
@@ -1071,6 +1112,7 @@ const App = () => {
           6. 마지막 줄 CTA: "[${brandName} 최저가 보러가기] ${isBackpack ? 'https://snaptogo.co.kr' : 'https://qrang.co.kr'}"
           7. 톤앤매너: 신뢰감 있으면서도 위트 있고, 소비자의 마음을 꿰뚫어 보는 듯한 통찰력 있는 톤.
           8. 마크다운 형식을 사용하지 말고 일반 텍스트로 줄바꿈을 활용해 작성하세요.
+          9. **중요**: HTML 태그를 사용하여 텍스트 색상(검정색, 파란색, 빨간색)과 배경 색상(노란색)을 적절히 사용하여 중요한 내용을 강조하세요. (예: <span style="color: blue;">파란색 텍스트</span>, <span style="color: red;">빨간색 텍스트</span>, <span style="background-color: yellow;">노란색 배경 강조</span>)
       `;
 
       if (referenceText) {
@@ -1281,7 +1323,7 @@ const App = () => {
     let imgIndex = 0;
 
     for (let i = 0; i < paragraphs.length; i++) {
-      result.push(<p key={`p-${i}`} style={{ marginBottom: '1.5em' }}>{paragraphs[i]}</p>);
+      result.push(<p key={`p-${i}`} style={{ marginBottom: '1.5em' }} dangerouslySetInnerHTML={{ __html: paragraphs[i] }} />);
       if ((i + 1) % imageInterval === 0 && imgIndex < images.length) {
         const currentIndex = imgIndex; // Fix closure issue
         result.push(
@@ -1488,7 +1530,7 @@ const App = () => {
                       border: '1px solid #bae6fd'
                     }}
                   >
-                    🔍 SEO 최적화 키워드 추천
+                    🔍 SEO 최적화
                   </button>
                   <button 
                     onClick={() => handleRecommendKeywords('column')}
@@ -1500,7 +1542,103 @@ const App = () => {
                       border: '1px solid #e9d5ff'
                     }}
                   >
-                    🖊️ 칼럼 키워드 추천
+                    🖊️ 칼럼/후기형
+                  </button>
+                  <button 
+                    onClick={() => handleRecommendKeywords('info')}
+                    disabled={loading}
+                    style={{
+                      ...styles.secondaryButton,
+                      background: '#dcfce7',
+                      color: '#15803d',
+                      border: '1px solid #bbf7d0'
+                    }}
+                  >
+                    💡 정보/꿀팁형
+                  </button>
+                  <button 
+                    onClick={() => handleRecommendKeywords('comparison')}
+                    disabled={loading}
+                    style={{
+                      ...styles.secondaryButton,
+                      background: '#ffedd5',
+                      color: '#c2410c',
+                      border: '1px solid #fed7aa'
+                    }}
+                  >
+                    ⚖️ 비교/분석형
+                  </button>
+                  <button 
+                    onClick={() => handleRecommendKeywords('trend')}
+                    disabled={loading}
+                    style={{
+                      ...styles.secondaryButton,
+                      background: '#ffe4e6',
+                      color: '#be123c',
+                      border: '1px solid #fecdd3'
+                    }}
+                  >
+                    🔥 트렌드/이슈
+                  </button>
+                  <button 
+                    onClick={() => handleRecommendKeywords('shortform')}
+                    disabled={loading}
+                    style={{
+                      ...styles.secondaryButton,
+                      background: '#f1f5f9',
+                      color: '#334155',
+                      border: '1px solid #e2e8f0'
+                    }}
+                  >
+                    📱 SNS/감성형
+                  </button>
+                  <button 
+                    onClick={() => handleRecommendKeywords('ai_optimized')}
+                    disabled={loading}
+                    style={{
+                      ...styles.secondaryButton,
+                      background: '#e0e7ff',
+                      color: '#4338ca',
+                      border: '1px solid #c7d2fe'
+                    }}
+                  >
+                    🤖 AI 최적화
+                  </button>
+                  <button 
+                    onClick={() => handleRecommendKeywords('seasonal')}
+                    disabled={loading}
+                    style={{
+                      ...styles.secondaryButton,
+                      background: '#fef08a',
+                      color: '#a16207',
+                      border: '1px solid #fde047'
+                    }}
+                  >
+                    🌸 시즌/계절 맞춤
+                  </button>
+                  <button 
+                    onClick={() => handleRecommendKeywords('persona')}
+                    disabled={loading}
+                    style={{
+                      ...styles.secondaryButton,
+                      background: '#ccfbf1',
+                      color: '#0f766e',
+                      border: '1px solid #99f6e4'
+                    }}
+                  >
+                    👨‍👩‍👧‍👦 타겟 맞춤형
+                  </button>
+                  <button 
+                    onClick={() => handleRecommendKeywords('promotion')}
+                    disabled={loading}
+                    style={{
+                      ...styles.secondaryButton,
+                      background: '#fce7f3',
+                      color: '#be185d',
+                      border: '1px solid #fbcfe8'
+                    }}
+                  >
+                    💰 가성비/할인
                   </button>
                 </div>
               </div>
@@ -1750,20 +1888,21 @@ const App = () => {
               블로그 본문이 생성되었습니다. 확인 후 본문 흐름에 맞는 이미지 생성을 진행하세요.
             </p>
 
-            <div style={{ 
-              background: '#f8fafc', 
-              padding: '25px', 
-              borderRadius: '16px', 
-              border: '1px solid #e2e8f0',
-              maxHeight: '400px',
-              overflowY: 'auto',
-              marginBottom: '30px',
-              fontSize: '1rem',
-              lineHeight: '1.6',
-              whiteSpace: 'pre-line'
-            }}>
-              {tempContent}
-            </div>
+            <div 
+              style={{ 
+                background: '#f8fafc', 
+                padding: '25px', 
+                borderRadius: '16px', 
+                border: '1px solid #e2e8f0',
+                maxHeight: '400px',
+                overflowY: 'auto',
+                marginBottom: '30px',
+                fontSize: '1rem',
+                lineHeight: '1.6',
+                whiteSpace: 'pre-line'
+              }}
+              dangerouslySetInnerHTML={{ __html: tempContent }}
+            />
 
             <div style={styles.buttonGroup}>
               <button 
@@ -1928,7 +2067,7 @@ const App = () => {
       </div>
 
       <div style={styles.footer}>
-        Designed by {DEVELOPER_NAME}
+        개발자 : {DEVELOPER_NAME}
       </div>
     </div>
   );
