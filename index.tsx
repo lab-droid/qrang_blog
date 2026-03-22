@@ -557,6 +557,7 @@ const App = () => {
   // Step 1: Keywords, Step 2: Title Selection, Step 3: Result
   const [step, setStep] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(false);
+  const [userApiKey, setUserApiKey] = useState<string>("");
   const [isApiKeyValid, setIsApiKeyValid] = useState<boolean>(false);
   const [showApiKeyInput, setShowApiKeyInput] = useState<boolean>(true); // Default to true to force input
   const [loadingMessage, setLoadingMessage] = useState<string>("");
@@ -591,25 +592,29 @@ const App = () => {
     }
   }, [step]);
 
-  useEffect(() => {
-    const checkKey = async () => {
-      if ((window as any).aistudio && (window as any).aistudio.hasSelectedApiKey) {
-        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-        setIsApiKeyValid(hasKey);
-        setShowApiKeyInput(!hasKey);
-      }
-    };
-    checkKey();
-  }, []);
-
-  const handleApiKeySelect = async () => {
-    if ((window as any).aistudio && (window as any).aistudio.openSelectKey) {
-      await (window as any).aistudio.openSelectKey();
-      // Assume success after triggering openSelectKey to mitigate race condition
+  const handleVerifyApiKey = async () => {
+    if (!userApiKey) {
+      alert("API Key를 입력해주세요.");
+      return;
+    }
+    setLoading(true);
+    setLoadingMessage("API Key 확인 중...");
+    try {
+      const ai = new GoogleGenAI({ apiKey: userApiKey });
+      // Simple call to verify key
+      await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: "Hi",
+      });
       setIsApiKeyValid(true);
       setShowApiKeyInput(false);
-    } else {
-      alert("API Key selection is not available in this environment.");
+      alert("API Key가 정상적으로 연결되었습니다.");
+    } catch (e) {
+      setIsApiKeyValid(false);
+      alert("유효하지 않은 API Key입니다. 다시 확인해주세요.");
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -624,7 +629,7 @@ const App = () => {
     setLoadingMessage(type === 'seo' ? "SEO 키워드 분석 중..." : "칼럼 키워드 도출 중...");
     
     // Instantiate locally to use the user's API key
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: userApiKey });
     
     // Build exclusion list string
     const excludeList = keywordHistory.join(', ');
@@ -732,7 +737,7 @@ const App = () => {
     setLoadingMessage("SEO 최적화 제목 생성 중...");
     try {
       // Instantiate locally to use the user's API key
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: userApiKey });
 
       const response = await ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
@@ -774,7 +779,7 @@ const App = () => {
     setLoadingMessage("SEO 최적화 제목 생성 중...");
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: userApiKey });
 
       // 1. Title Generation
       const titleRes = await ai.models.generateContent({
@@ -1019,7 +1024,7 @@ const App = () => {
 
     try {
       setLoadingMessage("C-RANK 로직 적용하여 본문 작성 중...");
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: userApiKey });
       const isBackpack = keyword.includes("백팩");
       const brandName = isBackpack ? "스냅투고(SnapToGo)" : "큐랑(Q-Rang)";
 
@@ -1114,7 +1119,7 @@ const App = () => {
     setLoadingMessage(`본문 흐름에 맞춘 고화질 이미지 ${imageCount}장 생성 중...`);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: userApiKey });
       const generatedImages: GeneratedImage[] = [];
       const refImageParts = await Promise.all(referenceImages.map(fileToGenerativePart));
       
@@ -1364,25 +1369,53 @@ const App = () => {
                 }} />
              </div>
 
-             <button 
-                onClick={handleApiKeySelect}
-                style={{ 
-                  ...styles.verifyBtn, 
-                  background: isApiKeyValid 
-                    ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
-                    : 'linear-gradient(135deg, #004e92 0%, #000428 100%)',
-                  boxShadow: isApiKeyValid ? '0 8px 20px rgba(16, 185, 129, 0.3)' : '0 8px 20px rgba(0, 78, 146, 0.2)',
-                }}
-             >
-               {isApiKeyValid ? 'API Key 재설정' : 'API Key 선택하기'}
-             </button>
+             <div style={{ position: 'relative', marginBottom: '15px' }}>
+               <input 
+                 type="password" 
+                 value={userApiKey}
+                 onChange={(e) => {
+                   setUserApiKey(e.target.value);
+                   setIsApiKeyValid(false);
+                 }}
+                 placeholder="sk-..."
+                 style={{
+                   ...styles.apiKeyInput,
+                   borderColor: isApiKeyValid && userApiKey ? '#10b981' : '#e2e8f0',
+                 }}
+               />
+               {isApiKeyValid && userApiKey && (
+                 <span style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', color: '#10b981' }}>
+                   ✓
+                 </span>
+               )}
+             </div>
+
+             <div style={{ display: 'flex', gap: '10px' }}>
+               <button 
+                  onClick={handleVerifyApiKey}
+                  disabled={loading || !userApiKey}
+                  style={{ 
+                    ...styles.verifyBtn, 
+                    flex: 1,
+                    background: isApiKeyValid && userApiKey
+                      ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
+                      : 'linear-gradient(135deg, #004e92 0%, #000428 100%)',
+                    opacity: loading ? 0.7 : 1,
+                    boxShadow: isApiKeyValid && userApiKey ? '0 8px 20px rgba(16, 185, 129, 0.3)' : '0 8px 20px rgba(0, 78, 146, 0.2)',
+                  }}
+               >
+                 {loading ? (
+                   <div style={{ width: '20px', height: '20px', border: '2px solid #fff', borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
+                 ) : isApiKeyValid && userApiKey ? '연결 재검증' : 'API Key 확인'}
+               </button>
+             </div>
 
              <div style={{ padding: '15px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '15px' }}>
                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 8px 0', lineHeight: '1.5' }}>
-                 💡 <strong>필수 사항:</strong> 고품질 이미지 생성을 위해 결제가 활성화된 Google Cloud 프로젝트의 API Key가 필요합니다.
+                 💡 <strong>필수 사항:</strong> 서비스를 이용하려면 본인의 Gemini API Key가 반드시 필요합니다.
                </p>
                <a 
-                 href="https://ai.google.dev/gemini-api/docs/billing" 
+                 href="https://aistudio.google.com/app/apikey" 
                  target="_blank" 
                  rel="noopener noreferrer" 
                  style={{ 
@@ -1395,7 +1428,7 @@ const App = () => {
                    gap: '4px'
                  }}
                >
-                 결제 설정 가이드 보기 <span style={{ fontSize: '1rem' }}>↗</span>
+                 무료 API Key 발급받기 <span style={{ fontSize: '1rem' }}>↗</span>
                </a>
              </div>
           </div>
