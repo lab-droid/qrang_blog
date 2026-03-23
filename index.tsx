@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type } from "@google/genai";
+import { Eye, EyeOff } from 'lucide-react';
 
 // --- Configuration ---
 const DEVELOPER_NAME = "정혁신";
@@ -54,51 +55,86 @@ const styles = {
     flexDirection: 'column' as 'column',
     alignItems: 'flex-end',
     gap: '12px',
+    maxWidth: 'calc(100% - 50px)',
   },
   apiKeyBtn: {
-    padding: '12px 24px',
+    padding: '10px 18px',
     borderRadius: '50px',
-    fontSize: '0.95rem',
+    fontSize: '0.85rem',
     fontWeight: '700',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: '8px',
     transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
     boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
     backdropFilter: 'blur(12px)',
     border: '1px solid rgba(255,255,255,0.2)',
   },
   apiKeyCard: {
-    background: 'rgba(255, 255, 255, 0.92)',
-    padding: '28px',
+    background: 'rgba(255, 255, 255, 0.98)',
+    padding: '24px',
     borderRadius: '24px',
-    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+    boxShadow: '0 30px 60px -12px rgba(0, 0, 0, 0.3)',
     backdropFilter: 'blur(20px)',
-    border: '1px solid rgba(255, 255, 255, 0.7)',
+    border: '1px solid rgba(255, 255, 255, 1)',
     width: '320px',
+    maxWidth: '100%',
     animation: 'slideInDown 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
     display: 'flex',
     flexDirection: 'column' as 'column',
-    gap: '18px',
+    gap: '16px',
+  },
+  navContainer: {
+    position: 'absolute' as 'absolute',
+    top: '25px',
+    left: '25px',
+    zIndex: 1000,
+    display: 'flex',
+    gap: '15px',
+  },
+  navBtn: {
+    padding: '10px 20px',
+    borderRadius: '50px',
+    fontSize: '0.9rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+    background: 'rgba(255, 255, 255, 0.2)',
+    color: '#ffffff',
+    border: '1px solid rgba(255, 255, 255, 0.3)',
+    backdropFilter: 'blur(10px)',
+    transition: 'all 0.3s ease',
+  },
+  navBtnActive: {
+    background: '#ffffff',
+    color: '#004e92',
+  },
+  howToUseCard: {
+    background: '#ffffff',
+    padding: '40px',
+    borderRadius: '30px',
+    boxShadow: '0 20px 60px rgba(0,0,0,0.1)',
+    maxWidth: '800px',
+    margin: '0 auto',
+    lineHeight: '1.8',
   },
   apiKeyInput: {
-    padding: '14px 18px',
-    borderRadius: '12px',
-    border: '2px solid #e2e8f0',
+    padding: '16px 20px',
+    borderRadius: '16px',
+    border: '2px solid #f1f5f9',
     width: '100%',
-    fontSize: '0.95rem',
+    fontSize: '1rem',
     outline: 'none',
     transition: 'all 0.3s ease',
-    backgroundColor: '#ffffff',
-    color: '#1a202c',
+    backgroundColor: '#f8fafc',
+    color: '#1e293b',
     boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)',
   },
   verifyBtn: {
-    padding: '14px',
-    borderRadius: '12px',
+    padding: '16px',
+    borderRadius: '16px',
     fontSize: '1rem',
-    fontWeight: '700',
+    fontWeight: '800',
     cursor: 'pointer',
     border: 'none',
     transition: 'all 0.3s ease',
@@ -107,6 +143,7 @@ const styles = {
     justifyContent: 'center',
     gap: '8px',
     color: '#ffffff',
+    letterSpacing: '0.5px',
   },
   contentWrapper: {
     position: 'relative' as 'relative',
@@ -440,8 +477,10 @@ const downloadImage = (url: string, filename: string) => {
 
 const copyToClipboard = async (text: string) => {
   try {
-    await navigator.clipboard.writeText(text);
-    alert('클립보드에 복사되었습니다!');
+    // Strip HTML tags for plain text copying
+    const plainText = text.replace(/<[^>]*>?/gm, '');
+    await navigator.clipboard.writeText(plainText);
+    alert('클립보드에 복사되었습니다! (HTML 태그 제외)');
   } catch (err) {
     console.error('Failed to copy!', err);
     alert('복사에 실패했습니다.');
@@ -554,11 +593,48 @@ const StepIndicator = ({ currentStep, onStepClick, isStepClickable }: { currentS
   );
 };
 
+// --- Utilities ---
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const callWithRetry = async (fn: () => Promise<any>, maxRetries = 10, initialDelay = 10000) => {
+  let retries = 0;
+  while (retries < maxRetries) {
+    try {
+      return await fn();
+    } catch (e: any) {
+      const errorMsg = (e?.message || "").toLowerCase();
+      const errorStatus = e?.status || "";
+      const errorString = JSON.stringify(e).toLowerCase();
+      
+      const isQuotaError = 
+        errorMsg.includes("quota") ||
+        errorMsg.includes("rate limit") ||
+        errorMsg.includes("resource_exhausted") || 
+        errorMsg.includes("429") || 
+        errorStatus === "RESOURCE_EXHAUSTED" ||
+        errorString.includes("resource_exhausted") ||
+        errorString.includes("429") ||
+        errorString.includes("quota");
+
+      if (isQuotaError && retries < maxRetries - 1) {
+        retries++;
+        // Exponential backoff: 10s, 20s, 40s, 80s...
+        const waitTime = initialDelay * Math.pow(2, retries - 1);
+        console.warn(`Quota exceeded. Retrying in ${waitTime}ms... (Attempt ${retries}/${maxRetries})`);
+        await delay(waitTime);
+      } else {
+        throw e;
+      }
+    }
+  }
+};
+
 const App = () => {
   // Step 1: Keywords, Step 2: Title Selection, Step 3: Result
   const [step, setStep] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(false);
   const [userApiKey, setUserApiKey] = useState<string>("");
+  const [showApiKey, setShowApiKey] = useState<boolean>(false);
   const [isApiKeyValid, setIsApiKeyValid] = useState<boolean>(false);
   const [showApiKeyInput, setShowApiKeyInput] = useState<boolean>(true); // Default to true to force input
   const [loadingMessage, setLoadingMessage] = useState<string>("");
@@ -584,6 +660,57 @@ const App = () => {
   const [extraKeywords, setExtraKeywords] = useState<string>("");
   const [isAutomating, setIsAutomating] = useState<boolean>(false);
   const [progressPercent, setProgressPercent] = useState<number>(0);
+  const [showHowToUse, setShowHowToUse] = useState<boolean>(false);
+
+  // New states for editing and custom image prompts
+  const [isEditingText, setIsEditingText] = useState<boolean>(false);
+  const [editedContent, setEditedContent] = useState<string>("");
+  const [showCustomPromptModal, setShowCustomPromptModal] = useState<boolean>(false);
+  const [customPrompt, setCustomPrompt] = useState<string>("");
+
+  const handleApiError = (e: any, defaultMessage: string) => {
+    console.error("API Error Details:", e);
+    const errorMsg = (e?.message || "").toLowerCase();
+    const errorStatus = e?.status || "";
+    const errorString = JSON.stringify(e).toLowerCase();
+    
+    if (
+      errorMsg.includes("resource_exhausted") || 
+      errorMsg.includes("429") || 
+      errorMsg.includes("quota") ||
+      errorMsg.includes("rate limit") ||
+      errorStatus === "RESOURCE_EXHAUSTED" ||
+      errorString.includes("resource_exhausted") ||
+      errorString.includes("429") ||
+      errorString.includes("quota")
+    ) {
+      alert("API 할당량(Quota)이 초과되었습니다.\n\n무료 티어 API 키의 경우 1분당 요청 횟수(RPM)가 매우 제한적입니다(보통 2~15회).\n\n현재 자동화 작업으로 인해 많은 요청이 발생하여 일시적으로 차단되었습니다. 약 1~2분 후 다시 시도해 주시면 정상적으로 작동합니다.\n\n문제가 지속되면 구글 AI 스튜디오에서 'Pay-as-you-go' 설정을 확인하거나 다른 API 키를 사용해 보세요.");
+    } else if (
+      errorMsg.includes("API_KEY_INVALID") || 
+      errorMsg.includes("403") ||
+      errorString.includes("API_KEY_INVALID")
+    ) {
+      alert("유효하지 않은 API Key입니다. 설정을 다시 확인해주세요.");
+    } else if (errorMsg.includes("SAFETY") || errorString.includes("SAFETY")) {
+      alert("AI 안전 정책에 의해 요청이 거부되었습니다. 다른 키워드나 프롬프트를 사용해 보세요.");
+    } else {
+      alert(defaultMessage);
+    }
+  };
+
+  const resetApp = () => {
+    setStep(1);
+    setKeyword("");
+    setSelectedTitle("");
+    setGeneratedTitles([]);
+    setTempContent("");
+    setTempImages([]);
+    setTempThumbnail(null);
+    setBlogPost(null);
+    setShowHowToUse(false);
+    setIsAutomating(false);
+    setProgressPercent(0);
+  };
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -603,17 +730,16 @@ const App = () => {
     try {
       const ai = new GoogleGenAI({ apiKey: userApiKey });
       // Simple call to verify key
-      await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+      await callWithRetry(() => ai.models.generateContent({
+        model: "gemini-3.1-pro-preview",
         contents: "Hi",
-      });
+      }));
       setIsApiKeyValid(true);
       setShowApiKeyInput(false);
       alert("API Key가 정상적으로 연결되었습니다.");
     } catch (e) {
       setIsApiKeyValid(false);
-      alert("유효하지 않은 API Key입니다. 다시 확인해주세요.");
-      console.error(e);
+      handleApiError(e, "유효하지 않은 API Key입니다. 다시 확인해주세요.");
     } finally {
       setLoading(false);
     }
@@ -627,6 +753,8 @@ const App = () => {
     }
 
     setLoading(true);
+    setIsAutomating(true);
+    setProgressPercent(0);
     const loadingMessages = {
       seo: "SEO 키워드 분석 중...",
       column: "칼럼 키워드 도출 중...",
@@ -641,6 +769,10 @@ const App = () => {
     };
     setLoadingMessage(loadingMessages[type]);
     
+    const progressInterval = setInterval(() => {
+      setProgressPercent(prev => (prev < 90 ? prev + Math.floor(Math.random() * 10) : prev));
+    }, 400);
+    
     // Instantiate locally to use the user's API key
     const ai = new GoogleGenAI({ apiKey: userApiKey });
     
@@ -651,55 +783,62 @@ const App = () => {
       : "";
 
     let prompt = "";
+    const carrierConstraint = "(중요: 모든 키워드는 반드시 '여행용 캐리어' 또는 '수하물'과 직접적으로 연관된 키워드여야 합니다.)";
+    
     switch (type) {
       case 'seo':
-        prompt = `여행 캐리어(Suitcase)와 관련된 네이버 블로그 C-RANK 키워드 중, 현재 검색량이 많고 경쟁력이 있는 'SEO 최적화 키워드' 5개를 추천해줘. 또한 '스냅투고', '패커블백팩', '여행용품' 키워드도 확장하여 함께 고려해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        prompt = `여행 캐리어(Suitcase)와 관련된 네이버 블로그 C-RANK 키워드 중, 현재 검색량이 많고 경쟁력이 있는 'SEO 최적화 키워드' 5개를 추천해줘. ${carrierConstraint} ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
         break;
       case 'column':
-        prompt = `'큐랑 캐리어(Q-Rang Carrier)'를 선택해야만 하는 확실한 이유와 매력을 어필하여 구매 욕구를 자극하는 '칼럼형/후기형 키워드' 5개를 추천해줘. 또한 '스냅투고', '패커블백팩', '여행용품' 키워드도 확장하여 함께 고려해줘. ${exclusionPrompt} 캐리어 선택에 결정 장애가 있는 다양한 타겟(신혼부부, 장기 여행자, 비즈니스맨 등)의 고민을 해결해주는 매력적인 문구여야 해. (예: 승무원이 몰래 쓰는 큐랑 캐리어의 비밀, 10만원대 갓성비 큐랑이 명품보다 나은 이유 등). 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        prompt = `'큐랑 캐리어(Q-Rang Carrier)'를 선택해야만 하는 확실한 이유와 매력을 어필하여 구매 욕구를 자극하는 '칼럼형/후기형 키워드' 5개를 추천해줘. ${carrierConstraint} ${exclusionPrompt} 캐리어 선택에 고민이 있는 타겟을 위한 매력적인 문구여야 해. 오직 키워드만 쉼표로 구분해서 나열해줘.`;
         break;
       case 'info':
-        prompt = `여행 준비, 짐싸기 꿀팁, 수하물 규정 등 독자들에게 실질적인 도움을 주는 '정보성 키워드' 5개를 추천해줘. '스냅투고', '큐랑 캐리어'와 자연스럽게 연결될 수 있는 주제면 좋아. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        prompt = `여행용 캐리어 관리법, 짐싸기 꿀팁, 수하물 규정 등 캐리어 사용자와 여행자에게 실질적인 도움을 주는 '정보성 키워드' 5개를 추천해줘. ${carrierConstraint} ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
         break;
       case 'comparison':
-        prompt = `캐리어 사이즈 비교(20인치 vs 24인치), 소재 비교(PC vs ABS), 백팩 vs 캐리어 등 소비자의 구매 결정을 돕는 '비교/분석형 키워드' 5개를 추천해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        prompt = `캐리어 사이즈 비교(20인치 vs 24인치), 소재 비교(PC vs ABS), 하드 vs 소프트 캐리어 등 캐리어 구매 결정을 돕는 '비교/분석형 키워드' 5개를 추천해줘. ${carrierConstraint} ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
         break;
       case 'trend':
-        prompt = `최근 여행 트렌드, 호캉스, 촌캉스, 해외여행 필수템 등 최신 유행을 반영한 '트렌드/이슈형 키워드' 5개를 추천해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        prompt = `최근 여행 트렌드에 어울리는 캐리어 디자인, 유행하는 캐리어 컬러, 스마트 캐리어 등 '트렌드/이슈형 캐리어 키워드' 5개를 추천해줘. ${carrierConstraint} ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
         break;
       case 'shortform':
-        prompt = `인스타그램 릴스, 틱톡, 유튜브 쇼츠 등 숏폼 콘텐츠에 어울리는 톡톡 튀고 감성적인 'SNS/숏폼 감성 키워드' 5개를 추천해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        prompt = `인스타그램 릴스, 틱톡 등 숏폼 콘텐츠에 어울리는 캐리어 언박싱, 캐리어 코디 등 'SNS 감성 캐리어 키워드' 5개를 추천해줘. ${carrierConstraint} ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
         break;
       case 'ai_optimized':
-        prompt = `최근 구글 SGE, 네이버 Cue: 등 AI 검색 엔진에서 답변으로 채택되기 좋은 'AI 검색 최적화(AIO) 키워드' 5개를 추천해줘. 질문형(Long-tail) 키워드나 명확한 정보성 의도를 담은 키워드가 좋아. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        prompt = `AI 검색 엔진에서 '캐리어 추천'이나 '캐리어 고르는 법' 등에 답변으로 채택되기 좋은 'AI 검색 최적화(AIO) 캐리어 키워드' 5개를 추천해줘. ${carrierConstraint} ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
         break;
       case 'seasonal':
-        prompt = `여름 휴가, 겨울 방학, 명절 연휴, 벚꽃 여행 등 특정 계절이나 시즌에 검색량이 급증하는 '시즌/계절 맞춤형 키워드' 5개를 추천해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        prompt = `여름 휴가용 대형 캐리어, 겨울 스키 여행용 캐리어 등 특정 계절이나 시즌에 맞는 '시즌/계절 맞춤형 캐리어 키워드' 5개를 추천해줘. ${carrierConstraint} ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
         break;
       case 'persona':
-        prompt = `신혼여행, 가족여행, 나홀로 여행, 출장(비즈니스) 등 특정 타겟층(페르소나)의 공감을 이끌어낼 수 있는 '타겟 맞춤형 키워드' 5개를 추천해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        prompt = `신혼여행용 커플 캐리어, 가족여행용 대용량 캐리어, 비즈니스 출장용 기내용 캐리어 등 특정 타겟층에 맞는 '타겟 맞춤형 캐리어 키워드' 5개를 추천해줘. ${carrierConstraint} ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
         break;
       case 'promotion':
-        prompt = `가성비, 할인, 기내용 캐리어 추천, 10만원대 캐리어 등 가격 대비 성능을 중시하는 소비자를 위한 '가성비/프로모션 키워드' 5개를 추천해줘. ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
+        prompt = `가성비 캐리어, 할인 중인 캐리어, 10만원대 튼튼한 캐리어 등 가격 경쟁력이 있는 '가성비/프로모션 캐리어 키워드' 5개를 추천해줘. ${carrierConstraint} ${exclusionPrompt} 오직 키워드만 쉼표로 구분해서 나열해줘.`;
         break;
     }
 
     try {
-      const response = await ai.models.generateContent({
+      const response = await callWithRetry(() => ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
         contents: prompt,
-      });
+      }));
+      setProgressPercent(100);
       const text = response.text || "";
       const keywords = text.split(',').map(k => k.trim()).filter(k => k.length > 0);
       setRecommendedKeywords(keywords);
       
       // Update history
-      setKeywordHistory(prev => [...prev, ...keywords]);
+      setKeywordHistory(prev => [...new Set([...prev, ...keywords])]);
     } catch (e) {
-      alert("키워드 추천 중 오류가 발생했습니다. API Key를 확인해주세요.");
-      console.error(e);
+      handleApiError(e, "키워드 추천 중 오류가 발생했습니다. API Key를 확인해주세요.");
     } finally {
-      setLoading(false);
+      clearInterval(progressInterval);
+      setTimeout(() => {
+        setLoading(false);
+        setIsAutomating(false);
+        setProgressPercent(0);
+      }, 500);
     }
   };
 
@@ -779,16 +918,16 @@ const App = () => {
       // Instantiate locally to use the user's API key
       const ai = new GoogleGenAI({ apiKey: userApiKey });
 
-      const response = await ai.models.generateContent({
+      const response = await callWithRetry(() => ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
         contents: `키워드 '${keyword}'를 활용하여 네이버 검색 노출에 유리한, 클릭을 유도하는 매력적인 여행/제품 리뷰 블로그 제목 5개를 만들어줘. 번호 없이 제목만 한 줄에 하나씩 출력해줘.`,
-      });
+      }));
       const text = response.text || "";
       const titles = text.split('\n').filter(t => t.trim().length > 0);
       setGeneratedTitles(titles);
       setStep(2); // Move to Step 2
     } catch (e) {
-      alert("제목 생성 실패. API Key를 확인해주세요.");
+      handleApiError(e, "제목 생성 실패. API Key를 확인해주세요.");
     } finally {
       setLoading(false);
     }
@@ -822,10 +961,10 @@ const App = () => {
       const ai = new GoogleGenAI({ apiKey: userApiKey });
 
       // 1. Title Generation
-      const titleRes = await ai.models.generateContent({
+      const titleRes = await callWithRetry(() => ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
         contents: `키워드 '${keyword}'를 활용하여 네이버 검색 노출에 유리한, 클릭을 유도하는 매력적인 여행/제품 리뷰 블로그 제목 5개를 만들어줘. 번호 없이 제목만 한 줄에 하나씩 출력해줘.`,
-      });
+      }));
       const titles = (titleRes.text || "").split('\n').filter(t => t.trim().length > 0);
       const autoTitle = titles[0] || `${keyword} 완벽 리뷰`;
       setSelectedTitle(autoTitle);
@@ -851,8 +990,7 @@ const App = () => {
 [큐랑 캐리어(Q-Rang Carrier) USP]
 1. "여행은 현관문을 나서는 순간부터 시작된다": 일상과 여행의 경계를 허무는 라이프스타일 아이템.
 2. "극강의 편리함": 360도 무소음 휠, 미친 수납력.
-3. "숨겨진 위트, 큐-아이즈(Q-Eyes)": 가방 안쪽에 숨겨진 윙크하는 눈 디테일.
-4. 압도적인 내구성 (PC 소재), TSA 락 잠금, 감각적인 컬러.
+3. 압도적인 내구성 (PC 소재), TSA 락 잠금, 감각적인 컬러.
       `;
 
       const productInfo = isBackpack ? BACKPACK_USP : CARRIER_USP;
@@ -893,16 +1031,17 @@ const App = () => {
         `;
       }
 
-      const contentResponse = await ai.models.generateContent({
+      const contentResponse = await callWithRetry(() => ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
         contents: promptContents,
-      });
+      }));
       const autoContent = contentResponse.text || "내용 생성 실패";
       setTempContent(autoContent);
       setProgressPercent(40);
 
       // 3. Image Generation
       setLoadingMessage(`본문 흐름에 맞춘 고화질 이미지 ${imageCount}장 생성 중...`);
+      await delay(5000); // Increased delay
       const generatedImages: GeneratedImage[] = [];
       const refImageParts = await Promise.all(referenceImages.map(fileToGenerativePart));
       
@@ -914,6 +1053,9 @@ const App = () => {
 
       for (let i = 0; i < imageCount; i++) {
         try {
+          // Add a larger delay between image generations to avoid rate limits
+          if (i > 0) await delay(8000);
+
           let stepRole = "";
           let sceneDescription = "";
           let overlayText = "";
@@ -969,8 +1111,8 @@ const App = () => {
           
           const parts: any[] = [...refImageParts, { text: imagePrompt }];
 
-          const imgResponse = await ai.models.generateContent({
-            model: 'gemini-3-pro-image-preview',
+          const imgResponse = await callWithRetry(() => ai.models.generateContent({
+            model: 'gemini-3.1-flash-image-preview',
             contents: { parts },
             config: {
               imageConfig: {
@@ -978,7 +1120,7 @@ const App = () => {
                 imageSize: "2K"
               }
             }
-          });
+          }));
 
           for (const part of imgResponse.candidates?.[0]?.content?.parts || []) {
              if (part.inlineData) {
@@ -996,6 +1138,7 @@ const App = () => {
 
       // 4. Thumbnail Generation
       setLoadingMessage("클릭을 부르는 썸네일 생성 중...");
+      await delay(5000);
       let autoThumbnail: GeneratedImage | null = null;
       try {
          const thumbPrompt = `
@@ -1004,8 +1147,8 @@ const App = () => {
             스타일: 고채도, 눈에 확 띄는 디자인. 텍스트 가독성 최우선. 100% 한국어 텍스트 렌더링.
             CRITICAL: Perfect Korean text rendering.
          `;
-         const thumbResponse = await ai.models.generateContent({
-            model: 'gemini-3-pro-image-preview',
+         const thumbResponse = await callWithRetry(() => ai.models.generateContent({
+            model: 'gemini-3.1-flash-image-preview',
             contents: { parts: [{ text: thumbPrompt }] },
              config: {
               imageConfig: {
@@ -1013,7 +1156,7 @@ const App = () => {
                 imageSize: "1K"
               }
             }
-         });
+         }));
          
          const thumbPart = thumbResponse.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
          if (thumbPart && thumbPart.inlineData) {
@@ -1045,8 +1188,7 @@ const App = () => {
       }, 800);
 
     } catch (e) {
-      alert("자동화 처리 중 오류가 발생했습니다.");
-      console.error(e);
+      handleApiError(e, "자동화 처리 중 오류가 발생했습니다.");
       setIsAutomating(false);
     } finally {
       setLoading(false);
@@ -1084,8 +1226,7 @@ const App = () => {
 [큐랑 캐리어(Q-Rang Carrier) USP]
 1. "여행은 현관문을 나서는 순간부터 시작된다": 일상과 여행의 경계를 허무는 라이프스타일 아이템.
 2. "극강의 편리함": 360도 무소음 휠, 미친 수납력.
-3. "숨겨진 위트, 큐-아이즈(Q-Eyes)": 가방 안쪽에 숨겨진 윙크하는 눈 디테일.
-4. 압도적인 내구성 (PC 소재), TSA 락 잠금, 감각적인 컬러.
+3. 압도적인 내구성 (PC 소재), TSA 락 잠금, 감각적인 컬러.
       `;
 
       const productInfo = isBackpack ? BACKPACK_USP : CARRIER_USP;
@@ -1126,16 +1267,16 @@ const App = () => {
         `;
       }
 
-      const contentResponse = await ai.models.generateContent({
+      const contentResponse = await callWithRetry(() => ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
         contents: promptContents,
-      });
+      }));
       const contentText = contentResponse.text || "내용 생성 실패";
       setTempContent(contentText);
       setStep(3);
 
     } catch (e) {
-      alert("콘텐츠 생성 중 오류가 발생했습니다.");
+      handleApiError(e, "콘텐츠 생성 중 오류가 발생했습니다.");
       setStep(2);
     } finally {
       setLoading(false);
@@ -1173,6 +1314,9 @@ const App = () => {
 
       for (let i = 0; i < imageCount; i++) {
         try {
+          // Add a larger delay between image generations to avoid rate limits
+          if (i > 0) await delay(8000);
+
           let stepRole = "";
           let sceneDescription = "";
           let overlayText = "";
@@ -1228,8 +1372,8 @@ const App = () => {
           
           const parts: any[] = [...refImageParts, { text: imagePrompt }];
 
-          const imgResponse = await ai.models.generateContent({
-            model: 'gemini-3-pro-image-preview',
+          const imgResponse = await callWithRetry(() => ai.models.generateContent({
+            model: 'gemini-3.1-flash-image-preview',
             contents: { parts },
             config: {
               imageConfig: {
@@ -1237,7 +1381,7 @@ const App = () => {
                 imageSize: "2K"
               }
             }
-          });
+          }));
 
           for (const part of imgResponse.candidates?.[0]?.content?.parts || []) {
              if (part.inlineData) {
@@ -1253,6 +1397,7 @@ const App = () => {
       }
 
       setLoadingMessage("클릭을 부르는 썸네일 생성 중...");
+      await delay(5000);
       let thumbnail: GeneratedImage | null = null;
       try {
          const thumbPrompt = `
@@ -1261,8 +1406,8 @@ const App = () => {
             스타일: 고채도, 눈에 확 띄는 디자인. 텍스트 가독성 최우선. 100% 한국어 텍스트 렌더링.
             CRITICAL: Perfect Korean text rendering.
          `;
-         const thumbResponse = await ai.models.generateContent({
-            model: 'gemini-3-pro-image-preview',
+         const thumbResponse = await callWithRetry(() => ai.models.generateContent({
+            model: 'gemini-3.1-flash-image-preview',
             contents: { parts: [{ text: thumbPrompt }] },
              config: {
               imageConfig: {
@@ -1270,7 +1415,7 @@ const App = () => {
                 imageSize: "1K"
               }
             }
-         });
+         }));
          
          const thumbPart = thumbResponse.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
          if (thumbPart && thumbPart.inlineData) {
@@ -1293,11 +1438,95 @@ const App = () => {
       setStep(4);
 
     } catch (e) {
-      alert("이미지 생성 중 오류가 발생했습니다.");
+      handleApiError(e, "이미지 생성 중 오류가 발생했습니다.");
       setStep(3);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleStartEditingText = () => {
+    if (!blogPost) return;
+    setEditedContent(blogPost.content);
+    setIsEditingText(true);
+  };
+
+  const handleSaveEditedText = () => {
+    if (!blogPost) return;
+    const updatedPost = { ...blogPost, content: editedContent };
+    setBlogPost(updatedPost);
+    setTempContent(editedContent);
+    setIsEditingText(false);
+  };
+
+  const handleGenerateCustomImage = async () => {
+    if (!isApiKeyValid || !customPrompt) return;
+    
+    setLoading(true);
+    setLoadingMessage("나만의 프롬프트로 이미지 생성 중...");
+    
+    try {
+      const ai = new GoogleGenAI({ apiKey: userApiKey });
+      const refImageParts = await Promise.all(referenceImages.map(fileToGenerativePart));
+      
+      const imagePrompt = `
+        [Custom User Prompt]
+        ${customPrompt}
+        
+        [Design & Style Directive]
+        - Style: Professional Editorial Design.
+        - Quality: 8K resolution, sharp details.
+        - Tone: Trustworthy Business Tone.
+        
+        [CRITICAL: Product Consistency]
+        - The image MUST feature the product from the uploaded reference images if applicable.
+        - Product identity must be identical to the reference.
+      `;
+      
+      const parts: any[] = [...refImageParts, { text: imagePrompt }];
+
+      const imgResponse = await callWithRetry(() => ai.models.generateContent({
+        model: 'gemini-3.1-flash-image-preview',
+        contents: { parts },
+        config: {
+          imageConfig: {
+            aspectRatio: "16:9",
+            imageSize: "2K"
+          }
+        }
+      }));
+
+      const newImages = [...(blogPost?.images || [])];
+      for (const part of imgResponse.candidates?.[0]?.content?.parts || []) {
+         if (part.inlineData) {
+            newImages.push({
+              url: `data:image/png;base64,${part.inlineData.data}`,
+              type: 'content'
+            });
+         }
+      }
+
+      if (blogPost) {
+        setBlogPost({ ...blogPost, images: newImages });
+      }
+      
+      setShowCustomPromptModal(false);
+      setCustomPrompt("");
+      alert("이미지가 추가되었습니다!");
+    } catch (e) {
+      handleApiError(e, "이미지 생성 중 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegenerateImages = async () => {
+    if (!blogPost) return;
+    
+    const confirmRegen = confirm("현재 생성된 모든 이미지를 삭제하고 다시 생성하시겠습니까? (썸네일 포함)");
+    if (!confirmRegen) return;
+
+    handleGenerateImages();
   };
 
   const handleDownloadAllImages = async () => {
@@ -1374,6 +1603,27 @@ const App = () => {
     <div style={styles.container}>
       <div style={styles.heroBackground} />
       
+      <div style={styles.navContainer}>
+        <button 
+          style={{
+            ...styles.navBtn,
+            ...(step === 1 && !showHowToUse ? styles.navBtnActive : {})
+          }}
+          onClick={resetApp}
+        >
+          🏠 홈
+        </button>
+        <button 
+          style={{
+            ...styles.navBtn,
+            ...(showHowToUse ? styles.navBtnActive : {})
+          }}
+          onClick={() => setShowHowToUse(true)}
+        >
+          📖 사용방법
+        </button>
+      </div>
+
       <div style={styles.apiKeyWrapper}>
         <button 
           style={{
@@ -1400,36 +1650,68 @@ const App = () => {
         
         {showApiKeyInput && (
           <div style={styles.apiKeyCard}>
-             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '800', color: '#1e293b' }}>Gemini API 설정</h3>
+             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '900', color: '#0f172a', letterSpacing: '-0.5px' }}>Google API Key 설정</h3>
                 <div style={{ 
-                  width: '10px', 
-                  height: '10px', 
+                  width: '12px', 
+                  height: '12px', 
                   borderRadius: '50%', 
                   backgroundColor: isApiKeyValid ? '#10b981' : '#ef4444',
-                  boxShadow: isApiKeyValid ? '0 0 10px #10b981' : '0 0 10px #ef4444'
+                  boxShadow: isApiKeyValid ? '0 0 15px #10b981' : '0 0 15px #ef4444',
+                  border: '2px solid #fff'
                 }} />
              </div>
+             <p style={{ margin: '0 0 10px 0', fontSize: '0.85rem', color: '#64748b', fontWeight: '500' }}>
+               안전한 콘텐츠 생성을 위해 API 키를 입력해주세요.
+             </p>
 
-             <div style={{ position: 'relative', marginBottom: '15px' }}>
+             <div style={{ position: 'relative', marginBottom: '10px' }}>
                <input 
-                 type="password" 
+                 type={showApiKey ? "text" : "password"} 
                  value={userApiKey}
                  onChange={(e) => {
                    setUserApiKey(e.target.value);
                    setIsApiKeyValid(false);
                  }}
-                 placeholder="sk-..."
+                 placeholder="AIza..."
                  style={{
                    ...styles.apiKeyInput,
-                   borderColor: isApiKeyValid && userApiKey ? '#10b981' : '#e2e8f0',
+                   borderColor: isApiKeyValid && userApiKey ? '#10b981' : '#f1f5f9',
+                   paddingRight: '80px',
                  }}
                />
-               {isApiKeyValid && userApiKey && (
-                 <span style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', color: '#10b981' }}>
-                   ✓
-                 </span>
-               )}
+               <div style={{ 
+                 position: 'absolute', 
+                 right: '10px', 
+                 top: '50%', 
+                 transform: 'translateY(-50%)', 
+                 display: 'flex', 
+                 alignItems: 'center',
+                 gap: '8px'
+               }}>
+                 <button
+                   type="button"
+                   onClick={() => setShowApiKey(!showApiKey)}
+                   style={{
+                     background: 'none',
+                     border: 'none',
+                     cursor: 'pointer',
+                     color: '#64748b',
+                     padding: '5px',
+                     display: 'flex',
+                     alignItems: 'center',
+                     justifyContent: 'center',
+                     borderRadius: '4px',
+                   }}
+                 >
+                   {showApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                 </button>
+                 {isApiKeyValid && userApiKey && (
+                   <span style={{ color: '#10b981', fontWeight: 'bold' }}>
+                     ✓
+                   </span>
+                 )}
+               </div>
              </div>
 
              <div style={{ display: 'flex', gap: '10px' }}>
@@ -1452,27 +1734,6 @@ const App = () => {
                </button>
              </div>
 
-             <div style={{ padding: '15px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '15px' }}>
-               <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 8px 0', lineHeight: '1.5' }}>
-                 💡 <strong>필수 사항:</strong> 서비스를 이용하려면 본인의 Gemini API Key가 반드시 필요합니다.
-               </p>
-               <a 
-                 href="https://aistudio.google.com/app/apikey" 
-                 target="_blank" 
-                 rel="noopener noreferrer" 
-                 style={{ 
-                   fontSize: '0.8rem', 
-                   color: '#004e92', 
-                   textDecoration: 'none', 
-                   fontWeight: '700',
-                   display: 'flex',
-                   alignItems: 'center',
-                   gap: '4px'
-                 }}
-               >
-                 무료 API Key 발급받기 <span style={{ fontSize: '1rem' }}>↗</span>
-               </a>
-             </div>
           </div>
         )}
       </div>
@@ -1502,7 +1763,53 @@ const App = () => {
         />
 
         {/* Step 1: Keyword Setup */}
-        {step === 1 && (
+        {showHowToUse ? (
+          <div style={{ ...styles.howToUseCard, ...styles.fadeIn }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+              <h2 style={{ margin: 0, color: '#1e293b', fontSize: '2rem', fontWeight: '900' }}>📖 큐랑 블로그 AI 사용방법</h2>
+              <button 
+                style={{ ...styles.navBtn, background: '#f1f5f9', color: '#64748b', border: 'none' }}
+                onClick={() => setShowHowToUse(false)}
+              >
+                닫기 ✕
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+              <section>
+                <h3 style={{ color: '#004e92', fontSize: '1.3rem', marginBottom: '10px' }}>1. API Key 설정</h3>
+                <p>우측 상단의 🔑 버튼을 눌러 본인의 <strong>Gemini API Key</strong>를 입력하고 확인 버튼을 누르세요. API가 연결되어야 모든 기능을 사용할 수 있습니다.</p>
+              </section>
+
+              <section>
+                <h3 style={{ color: '#004e92', fontSize: '1.3rem', marginBottom: '10px' }}>2. 키워드 입력 및 분석</h3>
+                <p>작성하고자 하는 블로그의 핵심 키워드를 입력하세요. AI가 실시간 트렌드를 분석하여 연관 키워드를 추천해줍니다.</p>
+              </section>
+
+              <section>
+                <h3 style={{ color: '#004e92', fontSize: '1.3rem', marginBottom: '10px' }}>3. 매력적인 제목 선택</h3>
+                <p>추천된 제목들 중 가장 마음에 드는 것을 선택하세요. 클릭 한 번으로 본문 생성 단계로 넘어갑니다.</p>
+              </section>
+
+              <section>
+                <h3 style={{ color: '#004e92', fontSize: '1.3rem', marginBottom: '10px' }}>4. 본문 및 이미지 생성</h3>
+                <p>C-RANK 로직이 적용된 전문적인 본문이 생성됩니다. 이후 본문 내용에 최적화된 고화질 이미지가 자동으로 생성되어 포스팅을 완성합니다.</p>
+              </section>
+
+              <section>
+                <h3 style={{ color: '#004e92', fontSize: '1.3rem', marginBottom: '10px' }}>5. 결과 확인 및 복사</h3>
+                <p>완성된 포스팅을 확인하고 제목과 본문을 복사하여 블로그에 바로 붙여넣으세요. 이미지도 개별 또는 전체 다운로드가 가능합니다.</p>
+              </section>
+            </div>
+
+            <button 
+              style={{ ...styles.actionButton, marginTop: '40px', width: '100%' }}
+              onClick={() => setShowHowToUse(false)}
+            >
+              이해했습니다! 시작하기
+            </button>
+          </div>
+        ) : step === 1 && (
           <div style={{ ...styles.card, ...styles.fadeIn }}>
             <h2 style={{ marginBottom: '30px', color: '#1e293b', fontSize: '1.6rem', borderBottom: '2px solid #f1f5f9', paddingBottom: '20px' }}>
               ✨ 블로그 포스팅 설정
@@ -1802,6 +2109,14 @@ const App = () => {
               <button style={{...styles.button, flex: 1, marginTop: 0}} onClick={handleGenerateTitles} disabled={loading || !keyword}>
                 {loading ? 'AI 분석 중...' : '단계별로 시작하기 (제목 생성) →'}
               </button>
+              {generatedTitles.length > 0 && (
+                <button 
+                  style={{...styles.button, flex: 0.5, marginTop: 0, background: '#10b981'}} 
+                  onClick={() => setStep(2)}
+                >
+                  다음 단계 (제목 선택) →
+                </button>
+              )}
               <button 
                 style={{
                   ...styles.button, 
@@ -1981,7 +2296,9 @@ const App = () => {
                 <div style={{ width: '300px', height: '12px', backgroundColor: '#e2e8f0', borderRadius: '6px', overflow: 'hidden', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
                   <div style={{ width: `${progressPercent}%`, height: '100%', background: 'linear-gradient(90deg, #8b5cf6 0%, #6d28d9 100%)', transition: 'width 0.3s ease' }} />
                 </div>
-                <p style={{ color: '#64748b', marginTop: '15px', fontWeight: 500 }}>모든 과정을 자동으로 진행하고 있습니다. 잠시만 기다려주세요.</p>
+                <p style={{ color: '#64748b', marginTop: '15px', fontWeight: 500 }}>
+                  {step === 1 ? "AI가 최적의 키워드를 분석하고 있습니다." : "모든 과정을 자동으로 진행하고 있습니다. 잠시만 기다려주세요."}
+                </p>
               </>
             ) : (
               <>
@@ -2018,6 +2335,21 @@ const App = () => {
             </div>
 
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+               <button 
+                 style={{ ...styles.prevButton, width: 'auto', padding: '8px 16px', fontSize: '0.85rem', borderRadius: '8px', marginTop: 0 }} 
+                 onClick={() => setStep(4)}
+               >
+                 ← 이전 단계
+               </button>
+               <button style={{ ...styles.actionButton, backgroundColor: '#f59e0b' }} onClick={handleStartEditingText}>
+                  ✍️ 본문 수정
+               </button>
+               <button style={{ ...styles.actionButton, backgroundColor: '#10b981' }} onClick={handleRegenerateImages}>
+                  🔄 이미지 다시 만들기
+               </button>
+               <button style={{ ...styles.actionButton, backgroundColor: '#8b5cf6' }} onClick={() => setShowCustomPromptModal(true)}>
+                  ✨ 나만의 프롬프트로 이미지 만들기
+               </button>
                <button style={styles.actionButton} onClick={handleDownloadAllImages}>
                   💾 이미지 전체 다운로드
                </button>
@@ -2029,11 +2361,46 @@ const App = () => {
                </button>
             </div>
 
-            <h1 style={styles.blogTitle}>{blogPost.title}</h1>
-            
-            <div style={styles.blogContent}>
-              {renderContentWithImages(blogPost.content, blogPost.images)}
-            </div>
+            {isEditingText ? (
+              <div style={{ marginBottom: '30px' }}>
+                <textarea
+                  style={{
+                    width: '100%',
+                    minHeight: '400px',
+                    padding: '20px',
+                    borderRadius: '12px',
+                    border: '2px solid #6d28d9',
+                    fontSize: '1rem',
+                    lineHeight: '1.6',
+                    fontFamily: 'inherit',
+                    marginBottom: '15px'
+                  }}
+                  value={editedContent}
+                  onChange={(e) => setEditedContent(e.target.value)}
+                />
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  <button 
+                    style={{ ...styles.secondaryButton, marginTop: 0 }} 
+                    onClick={() => setIsEditingText(false)}
+                  >
+                    취소
+                  </button>
+                  <button 
+                    style={{ ...styles.button, marginTop: 0, padding: '10px 30px' }} 
+                    onClick={handleSaveEditedText}
+                  >
+                    저장하기
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <h1 style={styles.blogTitle}>{blogPost.title}</h1>
+                <div style={styles.blogContent}>
+                  {renderContentWithImages(blogPost.content, blogPost.images)}
+                </div>
+              </>
+            )}
 
             {blogPost.thumbnail && (
               <div style={styles.thumbnailContainer}>
@@ -2065,6 +2432,50 @@ const App = () => {
           </div>
         )}
       </div>
+
+      {/* Custom Prompt Modal */}
+      {showCustomPromptModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#fff', padding: '30px', borderRadius: '24px',
+            maxWidth: '600px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)'
+          }}>
+            <h2 style={{ marginBottom: '15px', color: '#1e293b', fontSize: '1.5rem' }}>✨ 나만의 프롬프트로 이미지 만들기</h2>
+            <p style={{ color: '#64748b', marginBottom: '20px', fontSize: '0.95rem' }}>
+              원하는 이미지의 느낌을 상세히 적어주세요. (예: "제품이 숲속에 놓여있는 몽환적인 느낌", "밝고 화사한 거실 배경")
+            </p>
+            <textarea
+              style={{
+                width: '100%', minHeight: '150px', padding: '15px',
+                borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px',
+                fontSize: '1rem', fontFamily: 'inherit'
+              }}
+              placeholder="프롬프트를 입력하세요..."
+              value={customPrompt}
+              onChange={(e) => setCustomPrompt(e.target.value)}
+            />
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button 
+                style={{ ...styles.secondaryButton, marginTop: 0 }} 
+                onClick={() => setShowCustomPromptModal(false)}
+              >
+                닫기
+              </button>
+              <button 
+                style={{ ...styles.button, marginTop: 0, padding: '10px 30px' }} 
+                onClick={handleGenerateCustomImage}
+                disabled={!customPrompt || loading}
+              >
+                이미지 생성
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={styles.footer}>
         개발자 : {DEVELOPER_NAME}
