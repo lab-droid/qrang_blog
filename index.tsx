@@ -956,7 +956,9 @@ const App = () => {
 
       const response = await callWithRetry(() => ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
-        contents: `키워드 '${keyword}'를 활용하여 네이버 검색 노출에 유리한, 클릭을 유도하는 매력적인 여행/제품 리뷰 블로그 제목 5개를 만들어줘. 번호 없이 제목만 한 줄에 하나씩 출력해줘.`,
+        contents: `키워드 '${keyword}'를 활용하여 네이버 검색 노출에 유리한, 클릭을 유도하는 매력적인 여행/제품 리뷰 블로그 제목 3개를 만들어줘. 
+        반드시 메인 키워드 '${keyword}'가 각 제목의 맨 앞에 오도록 작성해. 
+        번호 없이 제목만 한 줄에 하나씩 출력해줘.`,
       }));
       const text = response.text || "";
       const titles = text.split('\n').filter(t => t.trim().length > 0);
@@ -998,7 +1000,7 @@ const App = () => {
       setLoadingMessage("최적의 블로그 제목 생성 중...");
       const titleResponse = await callWithRetry(() => ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
-        contents: `키워드 '${keyword}'를 활용하여 클릭을 유도하는 매력적인 네이버 블로그 제목 1개를 작성하세요.`,
+        contents: `키워드 '${keyword}'를 활용하여 클릭을 유도하는 매력적인 네이버 블로그 제목 1개를 작성하세요. 반드시 메인 키워드 '${keyword}'가 제목의 맨 앞에 오도록 작성해.`,
       }));
       const autoTitle = titleResponse.text?.replace(/"/g, "") || `${keyword} 추천 리뷰`;
       setSelectedTitle(autoTitle);
