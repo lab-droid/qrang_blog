@@ -14,6 +14,9 @@ const APP_NAME = "큐랑 블로그 AI";
 interface GeneratedImage {
   url: string;
   type: 'content' | 'thumbnail';
+  overlayText?: string;
+  sceneDescription?: string;
+  stepRole?: string;
 }
 
 interface BlogPost {
@@ -143,6 +146,22 @@ const styles = {
     justifyContent: 'center',
     gap: '8px',
     color: '#ffffff',
+    letterSpacing: '0.5px',
+  },
+  primaryBtn: {
+    padding: '16px 24px',
+    borderRadius: '16px',
+    fontSize: '1.1rem',
+    fontWeight: '800',
+    cursor: 'pointer',
+    border: 'none',
+    transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '12px',
+    color: '#ffffff',
+    boxShadow: '0 15px 35px rgba(0, 78, 146, 0.3)',
     letterSpacing: '0.5px',
   },
   contentWrapper: {
@@ -649,6 +668,14 @@ const App = () => {
   const [tempContent, setTempContent] = useState<string>("");
   const [tempImages, setTempImages] = useState<GeneratedImage[]>([]);
   const [tempThumbnail, setTempThumbnail] = useState<GeneratedImage | null>(null);
+
+  useEffect(() => {
+    if (process.env.API_KEY) {
+      setIsApiKeyValid(true);
+      setShowApiKeyInput(false);
+    }
+  }, []);
+
   const [referenceImages, setReferenceImages] = useState<File[]>([]);
   const [referenceText, setReferenceText] = useState<string>("");
   const [referenceFileNames, setReferenceFileNames] = useState<string[]>([]);
@@ -667,6 +694,9 @@ const App = () => {
   const [editedContent, setEditedContent] = useState<string>("");
   const [showCustomPromptModal, setShowCustomPromptModal] = useState<boolean>(false);
   const [customPrompt, setCustomPrompt] = useState<string>("");
+  const [editingImageIndex, setEditingImageIndex] = useState<number | null>(null);
+  const [editingImageText, setEditingImageText] = useState<string>("");
+  const [isRegeneratingImage, setIsRegeneratingImage] = useState<boolean>(false);
 
   const handleApiError = (e: any, defaultMessage: string) => {
     console.error("API Error Details:", e);
@@ -686,12 +716,18 @@ const App = () => {
     ) {
       alert("API 할당량(Quota)이 초과되었습니다.\n\n무료 티어 API 키의 경우 1분당 요청 횟수(RPM)가 매우 제한적입니다(보통 2~15회).\n\n현재 자동화 작업으로 인해 많은 요청이 발생하여 일시적으로 차단되었습니다. 약 1~2분 후 다시 시도해 주시면 정상적으로 작동합니다.\n\n문제가 지속되면 구글 AI 스튜디오에서 'Pay-as-you-go' 설정을 확인하거나 다른 API 키를 사용해 보세요.");
     } else if (
-      errorMsg.includes("API_KEY_INVALID") || 
+      errorMsg.includes("permission_denied") ||
       errorMsg.includes("403") ||
-      errorString.includes("API_KEY_INVALID")
+      errorString.includes("permission_denied") ||
+      errorString.includes("403")
+    ) {
+      alert("API 권한 오류(Permission Denied)가 발생했습니다.\n\n1. 사용 중인 API Key가 Gemini 3 Pro 모델에 대한 권한이 없을 수 있습니다.\n2. 구글 AI 스튜디오에서 'Pay-as-you-go' 요금제가 활성화된 유료 프로젝트의 API Key를 사용해야 합니다.\n3. 'API Key 설정' 메뉴에서 '유료 API Key 선택' 버튼을 눌러 권한이 있는 키를 선택해 보세요.\n4. 만약 유료 키가 없다면, 무료 티어에서 사용 가능한 'gemini-2.5-flash-image' 모델로 자동 전환하여 시도를 계속할 수 있습니다.");
+    } else if (
+      errorMsg.includes("api_key_invalid") || 
+      errorString.includes("api_key_invalid")
     ) {
       alert("유효하지 않은 API Key입니다. 설정을 다시 확인해주세요.");
-    } else if (errorMsg.includes("SAFETY") || errorString.includes("SAFETY")) {
+    } else if (errorMsg.includes("safety") || errorString.includes("safety")) {
       alert("AI 안전 정책에 의해 요청이 거부되었습니다. 다른 키워드나 프롬프트를 사용해 보세요.");
     } else {
       alert(defaultMessage);
@@ -721,14 +757,14 @@ const App = () => {
   }, [step]);
 
   const handleVerifyApiKey = async () => {
-    if (!userApiKey) {
-      alert("API Key를 입력해주세요.");
+    if (!userApiKey && !process.env.API_KEY) {
+      alert("API Key를 입력하거나 유료 API Key를 선택해주세요.");
       return;
     }
     setLoading(true);
     setLoadingMessage("API Key 확인 중...");
     try {
-      const ai = new GoogleGenAI({ apiKey: userApiKey });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || userApiKey });
       // Simple call to verify key
       await callWithRetry(() => ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
@@ -773,8 +809,8 @@ const App = () => {
       setProgressPercent(prev => (prev < 90 ? prev + Math.floor(Math.random() * 10) : prev));
     }, 400);
     
-    // Instantiate locally to use the user's API key
-    const ai = new GoogleGenAI({ apiKey: userApiKey });
+    // Instantiate locally to use the user's API key or the platform-provided key
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || userApiKey });
     
     // Build exclusion list string
     const excludeList = keywordHistory.join(', ');
@@ -915,8 +951,8 @@ const App = () => {
     setLoading(true);
     setLoadingMessage("SEO 최적화 제목 생성 중...");
     try {
-      // Instantiate locally to use the user's API key
-      const ai = new GoogleGenAI({ apiKey: userApiKey });
+      // Instantiate locally to use the user's API key or the platform-provided key
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || userApiKey });
 
       const response = await callWithRetry(() => ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
@@ -940,41 +976,36 @@ const App = () => {
       return;
     }
     if (!keyword) {
-      alert("키워드를 입력하거나 선택해주세요.");
+      alert("키워드를 입력해주세요.");
+      return;
+    }
+    if (referenceImages.length === 0) {
+      alert("참고 이미지를 최소 1장 업로드해주세요.");
       return;
     }
 
-    const isBackpack = keyword.includes("백팩");
-    const isCarrier = keyword.includes("캐리어");
-
-    if (!isBackpack && !isCarrier) {
-      alert("키워드에 '백팩' 또는 '캐리어'가 포함되어야 합니다.");
-      return;
-    }
-
-    setIsAutomating(true);
+    setStep(3);
     setLoading(true);
-    setProgressPercent(5);
-    setLoadingMessage("SEO 최적화 제목 생성 중...");
+    setIsAutomating(true);
+    setProgressPercent(0);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: userApiKey });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || userApiKey });
+      const isBackpack = keyword.includes("백팩");
+      const brandName = isBackpack ? "스냅투고(SnapToGo)" : "큐랑(Q-Rang)";
 
       // 1. Title Generation
-      const titleRes = await callWithRetry(() => ai.models.generateContent({
+      setLoadingMessage("최적의 블로그 제목 생성 중...");
+      const titleResponse = await callWithRetry(() => ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
-        contents: `키워드 '${keyword}'를 활용하여 네이버 검색 노출에 유리한, 클릭을 유도하는 매력적인 여행/제품 리뷰 블로그 제목 5개를 만들어줘. 번호 없이 제목만 한 줄에 하나씩 출력해줘.`,
+        contents: `키워드 '${keyword}'를 활용하여 클릭을 유도하는 매력적인 네이버 블로그 제목 1개를 작성하세요.`,
       }));
-      const titles = (titleRes.text || "").split('\n').filter(t => t.trim().length > 0);
-      const autoTitle = titles[0] || `${keyword} 완벽 리뷰`;
+      const autoTitle = titleResponse.text?.replace(/"/g, "") || `${keyword} 추천 리뷰`;
       setSelectedTitle(autoTitle);
-      setGeneratedTitles(titles);
       setProgressPercent(15);
 
       // 2. Content Generation
       setLoadingMessage("C-RANK 로직 적용하여 본문 작성 중...");
-      const brandName = isBackpack ? "스냅투고(SnapToGo)" : "큐랑(Q-Rang)";
-      
       const BACKPACK_USP = `
 [스냅투고 멀티패커블 백팩 USP]
 1. 35L 대용량 수납 가능
@@ -1044,7 +1075,7 @@ const App = () => {
       await delay(5000); // Increased delay
       const generatedImages: GeneratedImage[] = [];
       const refImageParts = await Promise.all(referenceImages.map(fileToGenerativePart));
-      
+
       const sellingPoints = [
         "360도 무소음 휠", "미친 수납력", "PC 소재 내구성", 
         "TSA 락 잠금", "감각적인 컬러", "부드러운 핸들링",
@@ -1091,42 +1122,66 @@ const App = () => {
             
             [Content Structure: ${stepRole} - Image ${i + 1}/${imageCount}]
             - Context: ${sceneDescription}
-            - Connection: Ensure the visual flow matches the generated blog content: "${autoContent.substring(0, 500)}..."
+            Connection: Ensure the visual flow matches the generated blog content: "${autoContent.substring(0, 500)}..."
             
             [CRITICAL: Product Consistency]
             - Model: Use Gemini 3.0 PRO Image Generation.
-            - The image MUST feature the '${isBackpack ? 'SnapToGo Multi-Packable Backpack' : 'Q-Rang Carrier'}' exactly as shown in the uploaded reference images.
-            - IMPORTANT: The product's main body, shape, and core design MUST NOT CHANGE. Angles and compositions can vary, but the product identity must be identical to the reference.
-            - Do NOT introduce generic ${isBackpack ? 'backpacks' : 'suitcases'} or different designs.
-            - 제품/참고 이미지를 활용하여 이미지를 생성해야 합니다. 제품/참고 이미지 외 제품을 절대 포함하여 생성하지 않습니다.
+            - The image MUST feature the '${isBackpack ? 'SnapToGo Multi-Packable Backpack' : 'Q-Rang Carrier'}' EXACTLY as shown in the uploaded reference images.
+            - ABSOLUTE REQUIREMENT: Do NOT modify the product's size, shape, or any internal text/logos found on the reference images.
+            - The product identity must be 100% identical to the reference. NO variations allowed.
+            - 제품/참고 이미지를 활용하여 이미지를 생성해야 합니다. 제품/참고 이미지의 크기, 모양, 내부 텍스트, 로고 등을 절대 변형하지 마십시오.
+            - 제품/참고 이미지 외 제품을 절대 포함하여 생성하지 않습니다.
 
             [Text Rendering: KOREAN TEXT]
             - You MUST render the following Korean text clearly and legibly in the image: "${overlayText}"
             - CRITICAL: The Korean text must be perfectly rendered without any typos, broken characters, or garbled text.
             - Font style: Modern, bold, sans-serif.
             - Ensure high contrast between text and background.
+            - **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate and visually appealing.
 
             Generate a high-quality blog image fitting the '${stepRole}' description with the text "${overlayText}".
           `;
           
           const parts: any[] = [...refImageParts, { text: imagePrompt }];
 
-          const imgResponse = await callWithRetry(() => ai.models.generateContent({
-            model: 'gemini-3.1-flash-image-preview',
-            contents: { parts },
-            config: {
-              imageConfig: {
-                aspectRatio: "16:9",
-                imageSize: "2K"
+          let imgResponse;
+          try {
+            imgResponse = await callWithRetry(() => ai.models.generateContent({
+              model: 'gemini-3-pro-image-preview',
+              contents: { parts },
+              config: {
+                imageConfig: {
+                  aspectRatio: "16:9",
+                  imageSize: "2K"
+                }
               }
+            }));
+          } catch (e: any) {
+            const errorMsg = (e?.message || "").toLowerCase();
+            if (errorMsg.includes("permission") || errorMsg.includes("403")) {
+              console.warn("Gemini 3 Pro permission denied, falling back to Gemini 2.5 Flash Image");
+              imgResponse = await callWithRetry(() => ai.models.generateContent({
+                model: 'gemini-2.5-flash-image',
+                contents: { parts },
+                config: {
+                  imageConfig: {
+                    aspectRatio: "16:9"
+                  }
+                }
+              }));
+            } else {
+              throw e;
             }
-          }));
+          }
 
           for (const part of imgResponse.candidates?.[0]?.content?.parts || []) {
              if (part.inlineData) {
                 generatedImages.push({
-                  url: `data:image/png;base64,${part.inlineData.data}`,
-                  type: 'content'
+                   url: `data:image/png;base64,${part.inlineData.data}`,
+                   type: 'content',
+                   overlayText,
+                   sceneDescription,
+                   stepRole
                 });
              }
           }
@@ -1135,7 +1190,7 @@ const App = () => {
         }
         setProgressPercent(40 + Math.floor((50 / imageCount) * (i + 1)));
       }
-
+      
       // 4. Thumbnail Generation
       setLoadingMessage("클릭을 부르는 썸네일 생성 중...");
       await delay(5000);
@@ -1146,23 +1201,47 @@ const App = () => {
             중앙에 '${keyword}'라는 한국어 텍스트와 "지금 떠나요" 또는 "리뷰" 같은 부제가 매우 크고 잘 보이게 배치.
             스타일: 고채도, 눈에 확 띄는 디자인. 텍스트 가독성 최우선. 100% 한국어 텍스트 렌더링.
             CRITICAL: Perfect Korean text rendering.
+            **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate and visually appealing.
          `;
-         const thumbResponse = await callWithRetry(() => ai.models.generateContent({
-            model: 'gemini-3.1-flash-image-preview',
-            contents: { parts: [{ text: thumbPrompt }] },
-             config: {
-              imageConfig: {
-                aspectRatio: "1:1",
-                imageSize: "1K"
+         
+         let thumbResponse;
+         try {
+           thumbResponse = await callWithRetry(() => ai.models.generateContent({
+              model: 'gemini-3-pro-image-preview',
+              contents: { parts: [{ text: thumbPrompt }] },
+               config: {
+                imageConfig: {
+                  aspectRatio: "1:1",
+                  imageSize: "1K"
+                }
               }
-            }
-         }));
+           }));
+         } catch (e: any) {
+           const errorMsg = (e?.message || "").toLowerCase();
+           if (errorMsg.includes("permission") || errorMsg.includes("403")) {
+             console.warn("Gemini 3 Pro permission denied for thumbnail, falling back to Gemini 2.5 Flash Image");
+             thumbResponse = await callWithRetry(() => ai.models.generateContent({
+               model: 'gemini-2.5-flash-image',
+               contents: { parts: [{ text: thumbPrompt }] },
+               config: {
+                 imageConfig: {
+                   aspectRatio: "1:1"
+                 }
+               }
+             }));
+           } else {
+             throw e;
+           }
+         }
          
          const thumbPart = thumbResponse.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
          if (thumbPart && thumbPart.inlineData) {
            autoThumbnail = {
              url: `data:image/png;base64,${thumbPart.inlineData.data}`,
-             type: 'thumbnail'
+             type: 'thumbnail',
+             overlayText: keyword,
+             sceneDescription: "1:1 비율 유튜브/블로그 썸네일 디자인. 고채도, 눈에 확 띄는 디자인.",
+             stepRole: "Thumbnail"
            };
          }
       } catch (err) {
@@ -1195,6 +1274,189 @@ const App = () => {
     }
   };
 
+  const handleRegenerateThumbnail = async (newText: string) => {
+    if (!blogPost || !blogPost.thumbnail) return;
+    const thumbnail = blogPost.thumbnail;
+
+    setLoading(true);
+    setIsRegeneratingImage(true);
+    setLoadingMessage(`썸네일 다시 생성 중...`);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || userApiKey });
+      const refImageParts = await Promise.all(referenceImages.map(fileToGenerativePart));
+
+      const thumbPrompt = `
+        1:1 비율 유튜브/블로그 썸네일 디자인.
+        중앙에 "${newText}"라는 한국어 텍스트가 매우 크고 잘 보이게 배치.
+        스타일: 고채도, 눈에 확 띄는 디자인. 텍스트 가독성 최우선. 100% 한국어 텍스트 렌더링.
+        
+        [CRITICAL: Product Consistency]
+        - Model: Use Gemini 3.0 PRO Image Generation.
+        - The image MUST feature the product EXACTLY as shown in the uploaded reference images.
+        - ABSOLUTE REQUIREMENT: Do NOT modify the product's size, shape, or any internal text/logos.
+        
+        [Text Rendering: KOREAN TEXT]
+        - You MUST render the following Korean text clearly and legibly: "${newText}"
+        - CRITICAL: The Korean text must be perfectly rendered without any typos, broken characters, or garbled text.
+        - **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate.
+      `;
+
+      const parts: any[] = [...refImageParts, { text: thumbPrompt }];
+      let thumbResponse;
+      try {
+        thumbResponse = await callWithRetry(() => ai.models.generateContent({
+          model: 'gemini-3-pro-image-preview',
+          contents: { parts },
+          config: {
+            imageConfig: {
+              aspectRatio: "1:1",
+              imageSize: "1K"
+            }
+          }
+        }));
+      } catch (e: any) {
+        const errorMsg = (e?.message || "").toLowerCase();
+        if (errorMsg.includes("permission") || errorMsg.includes("403")) {
+          console.warn("Gemini 3 Pro permission denied for thumbnail, falling back to Gemini 2.5 Flash Image");
+          thumbResponse = await callWithRetry(() => ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: { parts },
+            config: {
+              imageConfig: {
+                aspectRatio: "1:1"
+              }
+            }
+          }));
+        } else {
+          throw e;
+        }
+      }
+
+      const thumbPart = thumbResponse.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+      if (thumbPart && thumbPart.inlineData) {
+        const newThumbnail = {
+          ...thumbnail,
+          url: `data:image/png;base64,${thumbPart.inlineData.data}`,
+          overlayText: newText
+        };
+        setBlogPost({
+          ...blogPost,
+          thumbnail: newThumbnail
+        });
+        setTempThumbnail(newThumbnail);
+        setEditingImageIndex(null);
+        alert("썸네일이 성공적으로 다시 생성되었습니다.");
+      } else {
+        alert("썸네일 생성에 실패했습니다. 다시 시도해 주세요.");
+      }
+    } catch (e) {
+      handleApiError(e, "썸네일 다시 생성 중 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+      setIsRegeneratingImage(false);
+    }
+  };
+
+  const handleRegenerateSingleImage = async (index: number, newText: string) => {
+    if (!blogPost) return;
+    const image = blogPost.images[index];
+    if (!image || !image.sceneDescription || !image.stepRole) {
+      alert("이미지 생성 정보가 부족하여 다시 생성할 수 없습니다. 전체 생성을 다시 시도해 주세요.");
+      setEditingImageIndex(null);
+      return;
+    }
+
+    setLoading(true);
+    setIsRegeneratingImage(true);
+    setLoadingMessage(`이미지 #${index + 1} 다시 생성 중...`);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || userApiKey });
+      const isBackpack = blogPost.keyword.includes("백팩");
+      const refImageParts = await Promise.all(referenceImages.map(fileToGenerativePart));
+
+      const imagePrompt = `
+        [Design & Style Directive]
+        - Style: Professional Editorial Design (Flat Design or Sophisticated 3D Isometric).
+        - Quality: 8K resolution, sharp details.
+        - Tone: Trustworthy Business Tone with distinct Accent Colors.
+        
+        [Content Structure: ${image.stepRole}]
+        - Context: ${image.sceneDescription}
+        
+        [CRITICAL: Product Consistency]
+        - Model: Use Gemini 3.0 PRO Image Generation.
+        - The image MUST feature the '${isBackpack ? 'SnapToGo Multi-Packable Backpack' : 'Q-Rang Carrier'}' EXACTLY as shown in the uploaded reference images.
+        - ABSOLUTE REQUIREMENT: Do NOT modify the product's size, shape, or any internal text/logos found on the reference images.
+        
+        [Text Rendering: KOREAN TEXT]
+        - You MUST render the following Korean text clearly and legibly in the image: "${newText}"
+        - CRITICAL: The Korean text must be perfectly rendered without any typos, broken characters, or garbled text.
+        - **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate.
+
+        Generate a high-quality blog image fitting the '${image.stepRole}' description with the text "${newText}".
+      `;
+
+      const parts: any[] = [...refImageParts, { text: imagePrompt }];
+      let imgResponse;
+      try {
+        imgResponse = await callWithRetry(() => ai.models.generateContent({
+          model: 'gemini-3-pro-image-preview',
+          contents: { parts },
+          config: {
+            imageConfig: {
+              aspectRatio: "16:9",
+              imageSize: "2K"
+            }
+          }
+        }));
+      } catch (e: any) {
+        const errorMsg = (e?.message || "").toLowerCase();
+        if (errorMsg.includes("permission") || errorMsg.includes("403")) {
+          console.warn("Gemini 3 Pro permission denied, falling back to Gemini 2.5 Flash Image");
+          imgResponse = await callWithRetry(() => ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: { parts },
+            config: {
+              imageConfig: {
+                aspectRatio: "16:9"
+              }
+            }
+          }));
+        } else {
+          throw e;
+        }
+      }
+
+      const newImages = [...blogPost.images];
+      let success = false;
+      for (const part of imgResponse.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) {
+          newImages[index] = {
+            ...image,
+            url: `data:image/png;base64,${part.inlineData.data}`,
+            overlayText: newText
+          };
+          success = true;
+          break;
+        }
+      }
+      
+      if (success) {
+        setBlogPost({ ...blogPost, images: newImages });
+        setEditingImageIndex(null);
+      } else {
+        throw new Error("이미지 데이터가 응답에 포함되지 않았습니다.");
+      }
+    } catch (e) {
+      handleApiError(e, "이미지 재생성 실패. API Key를 확인해주세요.");
+    } finally {
+      setLoading(false);
+      setIsRegeneratingImage(false);
+    }
+  };
+
   const handleGenerateContent = async () => {
     if (!isApiKeyValid) {
       alert("API Key를 먼저 연결해주세요.");
@@ -1207,7 +1469,7 @@ const App = () => {
 
     try {
       setLoadingMessage("C-RANK 로직 적용하여 본문 작성 중...");
-      const ai = new GoogleGenAI({ apiKey: userApiKey });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || userApiKey });
       const isBackpack = keyword.includes("백팩");
       const brandName = isBackpack ? "스냅투고(SnapToGo)" : "큐랑(Q-Rang)";
 
@@ -1302,7 +1564,7 @@ const App = () => {
     setLoadingMessage(`본문 흐름에 맞춘 고화질 이미지 ${imageCount}장 생성 중...`);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: userApiKey });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || userApiKey });
       const generatedImages: GeneratedImage[] = [];
       const refImageParts = await Promise.all(referenceImages.map(fileToGenerativePart));
       
@@ -1352,42 +1614,66 @@ const App = () => {
             
             [Content Structure: ${stepRole} - Image ${i + 1}/${imageCount}]
             - Context: ${sceneDescription}
-            - Connection: Ensure the visual flow matches the generated blog content: "${tempContent.substring(0, 500)}..."
+            Connection: Ensure the visual flow matches the generated blog content: "${tempContent.substring(0, 500)}..."
             
             [CRITICAL: Product Consistency]
             - Model: Use Gemini 3.0 PRO Image Generation.
-            - The image MUST feature the '${isBackpack ? 'SnapToGo Multi-Packable Backpack' : 'Q-Rang Carrier'}' exactly as shown in the uploaded reference images.
-            - IMPORTANT: The product's main body, shape, and core design MUST NOT CHANGE. Angles and compositions can vary, but the product identity must be identical to the reference.
-            - Do NOT introduce generic ${isBackpack ? 'backpacks' : 'suitcases'} or different designs.
-            - 제품/참고 이미지를 활용하여 이미지를 생성해야 합니다. 제품/참고 이미지 외 제품을 절대 포함하여 생성하지 않습니다.
+            - The image MUST feature the '${isBackpack ? 'SnapToGo Multi-Packable Backpack' : 'Q-Rang Carrier'}' EXACTLY as shown in the uploaded reference images.
+            - ABSOLUTE REQUIREMENT: Do NOT modify the product's size, shape, or any internal text/logos found on the reference images.
+            - The product identity must be 100% identical to the reference. NO variations allowed.
+            - 제품/참고 이미지를 활용하여 이미지를 생성해야 합니다. 제품/참고 이미지의 크기, 모양, 내부 텍스트, 로고 등을 절대 변형하지 마십시오.
+            - 제품/참고 이미지 외 제품을 절대 포함하여 생성하지 않습니다.
 
             [Text Rendering: KOREAN TEXT]
             - You MUST render the following Korean text clearly and legibly in the image: "${overlayText}"
             - CRITICAL: The Korean text must be perfectly rendered without any typos, broken characters, or garbled text.
             - Font style: Modern, bold, sans-serif.
             - Ensure high contrast between text and background.
+            - **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate and visually appealing.
 
             Generate a high-quality blog image fitting the '${stepRole}' description with the text "${overlayText}".
           `;
           
           const parts: any[] = [...refImageParts, { text: imagePrompt }];
 
-          const imgResponse = await callWithRetry(() => ai.models.generateContent({
-            model: 'gemini-3.1-flash-image-preview',
-            contents: { parts },
-            config: {
-              imageConfig: {
-                aspectRatio: "16:9",
-                imageSize: "2K"
+          let imgResponse;
+          try {
+            imgResponse = await callWithRetry(() => ai.models.generateContent({
+              model: 'gemini-3-pro-image-preview',
+              contents: { parts },
+              config: {
+                imageConfig: {
+                  aspectRatio: "16:9",
+                  imageSize: "2K"
+                }
               }
+            }));
+          } catch (e: any) {
+            const errorMsg = (e?.message || "").toLowerCase();
+            if (errorMsg.includes("permission") || errorMsg.includes("403")) {
+              console.warn("Gemini 3 Pro permission denied, falling back to Gemini 2.5 Flash Image");
+              imgResponse = await callWithRetry(() => ai.models.generateContent({
+                model: 'gemini-2.5-flash-image',
+                contents: { parts },
+                config: {
+                  imageConfig: {
+                    aspectRatio: "16:9"
+                  }
+                }
+              }));
+            } else {
+              throw e;
             }
-          }));
+          }
 
           for (const part of imgResponse.candidates?.[0]?.content?.parts || []) {
              if (part.inlineData) {
                 generatedImages.push({
-                  url: `data:image/png;base64,${part.inlineData.data}`,
-                  type: 'content'
+                   url: `data:image/png;base64,${part.inlineData.data}`,
+                   type: 'content',
+                   overlayText,
+                   sceneDescription,
+                   stepRole
                 });
              }
           }
@@ -1405,23 +1691,46 @@ const App = () => {
             중앙에 '${keyword}'라는 한국어 텍스트와 "지금 떠나요" 또는 "리뷰" 같은 부제가 매우 크고 잘 보이게 배치.
             스타일: 고채도, 눈에 확 띄는 디자인. 텍스트 가독성 최우선. 100% 한국어 텍스트 렌더링.
             CRITICAL: Perfect Korean text rendering.
+            **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate and visually appealing.
          `;
-         const thumbResponse = await callWithRetry(() => ai.models.generateContent({
-            model: 'gemini-3.1-flash-image-preview',
-            contents: { parts: [{ text: thumbPrompt }] },
-             config: {
-              imageConfig: {
-                aspectRatio: "1:1",
-                imageSize: "1K"
+         let thumbResponse;
+         try {
+           thumbResponse = await callWithRetry(() => ai.models.generateContent({
+              model: 'gemini-3-pro-image-preview',
+              contents: { parts: [{ text: thumbPrompt }] },
+               config: {
+                imageConfig: {
+                  aspectRatio: "1:1",
+                  imageSize: "1K"
+                }
               }
-            }
-         }));
+           }));
+         } catch (e: any) {
+           const errorMsg = (e?.message || "").toLowerCase();
+           if (errorMsg.includes("permission") || errorMsg.includes("403")) {
+             console.warn("Gemini 3 Pro permission denied, falling back to Gemini 2.5 Flash Image");
+             thumbResponse = await callWithRetry(() => ai.models.generateContent({
+                model: 'gemini-2.5-flash-image',
+                contents: { parts: [{ text: thumbPrompt }] },
+                 config: {
+                  imageConfig: {
+                    aspectRatio: "1:1"
+                  }
+                }
+             }));
+           } else {
+             throw e;
+           }
+         }
          
          const thumbPart = thumbResponse.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
          if (thumbPart && thumbPart.inlineData) {
            thumbnail = {
              url: `data:image/png;base64,${thumbPart.inlineData.data}`,
-             type: 'thumbnail'
+             type: 'thumbnail',
+             overlayText: keyword,
+             sceneDescription: "1:1 비율 유튜브/블로그 썸네일 디자인. 고채도, 눈에 확 띄는 디자인.",
+             stepRole: "Thumbnail"
            };
          }
       } catch (err) {
@@ -1466,7 +1775,7 @@ const App = () => {
     setLoadingMessage("나만의 프롬프트로 이미지 생성 중...");
     
     try {
-      const ai = new GoogleGenAI({ apiKey: userApiKey });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || userApiKey });
       const refImageParts = await Promise.all(referenceImages.map(fileToGenerativePart));
       
       const imagePrompt = `
@@ -1479,22 +1788,47 @@ const App = () => {
         - Tone: Trustworthy Business Tone.
         
         [CRITICAL: Product Consistency]
+        - Model: Use Gemini 3.0 PRO Image Generation.
         - The image MUST feature the product from the uploaded reference images if applicable.
-        - Product identity must be identical to the reference.
+        - ABSOLUTE REQUIREMENT: Do NOT modify the product's size, shape, or any internal text/logos found on the reference images.
+        - The product identity must be 100% identical to the reference. NO variations allowed.
+        - 제품/참고 이미지를 활용하여 이미지를 생성해야 합니다. 제품/참고 이미지의 크기, 모양, 내부 텍스트, 로고 등을 절대 변형하지 마십시오.
+
+        [Text Rendering: KOREAN TEXT]
+        - **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate and visually appealing.
       `;
       
       const parts: any[] = [...refImageParts, { text: imagePrompt }];
 
-      const imgResponse = await callWithRetry(() => ai.models.generateContent({
-        model: 'gemini-3.1-flash-image-preview',
-        contents: { parts },
-        config: {
-          imageConfig: {
-            aspectRatio: "16:9",
-            imageSize: "2K"
+      let imgResponse;
+      try {
+        imgResponse = await callWithRetry(() => ai.models.generateContent({
+          model: 'gemini-3-pro-image-preview',
+          contents: { parts },
+          config: {
+            imageConfig: {
+              aspectRatio: "16:9",
+              imageSize: "2K"
+            }
           }
+        }));
+      } catch (e: any) {
+        const errorMsg = (e?.message || "").toLowerCase();
+        if (errorMsg.includes("permission") || errorMsg.includes("403")) {
+          console.warn("Gemini 3 Pro permission denied for custom image, falling back to Gemini 2.5 Flash Image");
+          imgResponse = await callWithRetry(() => ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: { parts },
+            config: {
+              imageConfig: {
+                aspectRatio: "16:9"
+              }
+            }
+          }));
+        } else {
+          throw e;
         }
-      }));
+      }
 
       const newImages = [...(blogPost?.images || [])];
       for (const part of imgResponse.candidates?.[0]?.content?.parts || []) {
@@ -1562,13 +1896,49 @@ const App = () => {
               alt={`Generated content ${currentIndex}`} 
               style={styles.blogImage}
             />
-            <div style={{ textAlign: 'right' }}>
-              <button 
-                style={styles.actionButton}
-                onClick={() => downloadImage(images[currentIndex].url, `blog_image_${currentIndex + 1}.png`)}
-              >
-                💾 이미지 다운로드
-              </button>
+            <div style={{ textAlign: 'right', marginTop: '10px', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              {editingImageIndex === currentIndex ? (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input 
+                    type="text" 
+                    value={editingImageText} 
+                    onChange={(e) => setEditingImageText(e.target.value)}
+                    style={{ ...styles.input, width: '200px', padding: '6px 12px', marginBottom: 0 }}
+                    placeholder="수정할 텍스트 입력"
+                  />
+                  <button 
+                    style={{ ...styles.actionButton, backgroundColor: '#10b981' }}
+                    onClick={() => handleRegenerateSingleImage(currentIndex, editingImageText)}
+                    disabled={loading}
+                  >
+                    {loading && editingImageIndex === currentIndex ? '⏳ 생성 중...' : '✅ 적용'}
+                  </button>
+                  <button 
+                    style={{ ...styles.actionButton, backgroundColor: '#6b7280' }}
+                    onClick={() => setEditingImageIndex(null)}
+                  >
+                    취소
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button 
+                    style={{ ...styles.actionButton, backgroundColor: '#6366f1' }}
+                    onClick={() => {
+                      setEditingImageIndex(currentIndex);
+                      setEditingImageText(images[currentIndex].overlayText || "");
+                    }}
+                  >
+                    ✏️ 텍스트 수정
+                  </button>
+                  <button 
+                    style={styles.actionButton}
+                    onClick={() => downloadImage(images[currentIndex].url, `blog_image_${currentIndex + 1}.png`)}
+                  >
+                    💾 다운로드
+                  </button>
+                </>
+              )}
             </div>
           </div>
         );
@@ -1584,13 +1954,49 @@ const App = () => {
               alt={`Generated content ${currentIndex}`} 
               style={styles.blogImage}
             />
-            <div style={{ textAlign: 'right' }}>
-              <button 
-                style={styles.actionButton}
-                onClick={() => downloadImage(images[currentIndex].url, `blog_image_${currentIndex + 1}.png`)}
-              >
-                💾 이미지 다운로드
-              </button>
+            <div style={{ textAlign: 'right', marginTop: '10px', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              {editingImageIndex === currentIndex ? (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input 
+                    type="text" 
+                    value={editingImageText} 
+                    onChange={(e) => setEditingImageText(e.target.value)}
+                    style={{ ...styles.input, width: '200px', padding: '6px 12px', marginBottom: 0 }}
+                    placeholder="수정할 텍스트 입력"
+                  />
+                  <button 
+                    style={{ ...styles.actionButton, backgroundColor: '#10b981' }}
+                    onClick={() => handleRegenerateSingleImage(currentIndex, editingImageText)}
+                    disabled={loading}
+                  >
+                    {loading && editingImageIndex === currentIndex ? '⏳ 생성 중...' : '✅ 적용'}
+                  </button>
+                  <button 
+                    style={{ ...styles.actionButton, backgroundColor: '#6b7280' }}
+                    onClick={() => setEditingImageIndex(null)}
+                  >
+                    취소
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button 
+                    style={{ ...styles.actionButton, backgroundColor: '#6366f1' }}
+                    onClick={() => {
+                      setEditingImageIndex(currentIndex);
+                      setEditingImageText(images[currentIndex].overlayText || "");
+                    }}
+                  >
+                    ✏️ 텍스트 수정
+                  </button>
+                  <button 
+                    style={styles.actionButton}
+                    onClick={() => downloadImage(images[currentIndex].url, `blog_image_${currentIndex + 1}.png`)}
+                  >
+                    💾 다운로드
+                  </button>
+                </>
+              )}
             </div>
           </div>
         );
@@ -1713,6 +2119,32 @@ const App = () => {
                  )}
                </div>
              </div>
+
+             <button
+               onClick={async () => {
+                 try {
+                   await (window as any).aistudio.openSelectKey();
+                   // After selection, the key is injected into process.env.API_KEY
+                   // We can try to use it or just inform the user
+                   alert("유료 API Key가 선택되었습니다. 이제 Gemini 3 Pro 모델을 사용할 수 있습니다.");
+                   setIsApiKeyValid(true);
+                   // We don't necessarily have the key string here, but the platform will use it
+                   // If userApiKey is empty, we might need to handle that.
+                   // But let's assume the user knows.
+                 } catch (err) {
+                   console.error("Key selection error", err);
+                 }
+               }}
+               style={{
+                 ...styles.primaryBtn,
+                 background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                 padding: '10px',
+                 fontSize: '0.85rem',
+                 marginBottom: '10px'
+               }}
+             >
+               💎 유료 API Key 선택 (Gemini 3 Pro 필수)
+             </button>
 
              <div style={{ display: 'flex', gap: '10px' }}>
                <button 
@@ -2410,13 +2842,49 @@ const App = () => {
                   alt="Post Thumbnail" 
                   style={{ maxWidth: '500px', width: '100%', borderRadius: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.15)' }} 
                 />
-                 <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'center' }}>
-                    <button 
-                      style={styles.actionButton}
-                      onClick={() => downloadImage(blogPost.thumbnail!.url, 'thumbnail.png')}
-                    >
-                      💾 썸네일 다운로드
-                    </button>
+                <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                  {editingImageIndex === -1 ? (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input 
+                        type="text" 
+                        value={editingImageText} 
+                        onChange={(e) => setEditingImageText(e.target.value)}
+                        style={{ ...styles.input, width: '250px', padding: '10px 15px', marginBottom: 0 }}
+                        placeholder="수정할 썸네일 텍스트 입력"
+                      />
+                      <button 
+                        style={{ ...styles.actionButton, backgroundColor: '#10b981' }}
+                        onClick={() => handleRegenerateThumbnail(editingImageText)}
+                        disabled={loading}
+                      >
+                        {loading && editingImageIndex === -1 ? '⏳ 생성 중...' : '✅ 적용'}
+                      </button>
+                      <button 
+                        style={{ ...styles.actionButton, backgroundColor: '#6b7280' }}
+                        onClick={() => setEditingImageIndex(null)}
+                      >
+                        취소
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <button 
+                        style={{ ...styles.actionButton, backgroundColor: '#6366f1' }}
+                        onClick={() => {
+                          setEditingImageIndex(-1);
+                          setEditingImageText(blogPost.thumbnail?.overlayText || "");
+                        }}
+                      >
+                        ✏️ 텍스트 수정
+                      </button>
+                      <button 
+                        style={styles.actionButton}
+                        onClick={() => downloadImage(blogPost.thumbnail!.url, 'thumbnail.png')}
+                      >
+                        💾 썸네일 다운로드
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )}
