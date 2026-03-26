@@ -721,7 +721,7 @@ const App = () => {
       errorString.includes("permission_denied") ||
       errorString.includes("403")
     ) {
-      alert("API 권한 오류(Permission Denied)가 발생했습니다.\n\n1. 사용 중인 API Key가 Gemini 3 Pro 모델에 대한 권한이 없을 수 있습니다.\n2. 구글 AI 스튜디오에서 'Pay-as-you-go' 요금제가 활성화된 유료 프로젝트의 API Key를 사용해야 합니다.\n3. 'API Key 설정' 메뉴에서 '유료 API Key 선택' 버튼을 눌러 권한이 있는 키를 선택해 보세요.\n4. 만약 유료 키가 없다면, 무료 티어에서 사용 가능한 'gemini-2.5-flash-image' 모델로 자동 전환하여 시도를 계속할 수 있습니다.");
+      alert("API 권한 오류(Permission Denied)가 발생했습니다.\n\n1. 사용 중인 API Key가 Gemini 3 Pro 모델에 대한 권한이 없을 수 있습니다.\n2. 구글 AI 스튜디오에서 'Pay-as-you-go' 요금제가 활성화된 유료 프로젝트의 API Key를 사용해야 합니다.\n3. 'API Key 설정' 메뉴에서 '유료 API Key 선택' 버튼을 눌러 권한이 있는 키를 선택해 보세요.");
     } else if (
       errorMsg.includes("api_key_invalid") || 
       errorString.includes("api_key_invalid")
@@ -961,7 +961,7 @@ const App = () => {
         번호 없이 제목만 한 줄에 하나씩 출력해줘.`,
       }));
       const text = response.text || "";
-      const titles = text.split('\n').filter(t => t.trim().length > 0);
+      const titles = text.split('\n').filter(t => t.trim().length > 0).map(t => t.replace(/\*\*/g, '').trim());
       setGeneratedTitles(titles);
       setStep(2); // Move to Step 2
     } catch (e) {
@@ -1002,7 +1002,7 @@ const App = () => {
         model: "gemini-3.1-pro-preview",
         contents: `키워드 '${keyword}'를 활용하여 클릭을 유도하는 매력적인 네이버 블로그 제목 1개를 작성하세요. 반드시 메인 키워드 '${keyword}'가 제목의 맨 앞에 오도록 작성해.`,
       }));
-      const autoTitle = titleResponse.text?.replace(/"/g, "") || `${keyword} 추천 리뷰`;
+      const autoTitle = titleResponse.text?.replace(/["*]/g, "") || `${keyword} 추천 리뷰`;
       setSelectedTitle(autoTitle);
       setProgressPercent(15);
 
@@ -1126,55 +1126,38 @@ const App = () => {
             - Context: ${sceneDescription}
             Connection: Ensure the visual flow matches the generated blog content: "${autoContent.substring(0, 500)}..."
             
-            [CRITICAL: Product Consistency]
+            [CRITICAL: STRICT PRODUCT CONSISTENCY - ZERO DEFORMATION]
             - Model: Use Gemini 3.0 PRO Image Generation.
-            - The image MUST feature the '${isBackpack ? 'SnapToGo Multi-Packable Backpack' : 'Q-Rang Carrier'}' EXACTLY as shown in the uploaded reference images.
-            - ABSOLUTE REQUIREMENT: Do NOT modify the product's size, shape, or any internal text/logos found on the reference images.
-            - The product identity must be 100% identical to the reference. NO variations allowed.
-            - 제품/참고 이미지를 활용하여 이미지를 생성해야 합니다. 제품/참고 이미지의 크기, 모양, 내부 텍스트, 로고 등을 절대 변형하지 마십시오.
-            - 제품/참고 이미지 외 제품을 절대 포함하여 생성하지 않습니다.
+            - You MUST use the provided reference image as the absolute source of truth for the product.
+            - ABSOLUTE PROHIBITION: DO NOT alter, deform, hallucinate, or change the product's shape, color, proportions, logos, or internal text.
+            - The product in the generated image MUST be a 1:1 exact pixel-perfect match to the reference image.
+            - 제품/참고 이미지를 합성할 때 원본의 형태, 비율, 색상, 로고, 텍스트에 단 1%의 변형도 있어서는 안 됩니다. 있는 그대로 배치하십시오.
+            - 제품/참고 이미지 외 다른 제품을 절대 포함하여 생성하지 마십시오.
 
-            [Text Rendering: KOREAN TEXT]
-            - You MUST render the following Korean text clearly and legibly in the image: "${overlayText}"
-            - CRITICAL: The Korean text must be perfectly rendered without any typos, broken characters, or garbled text.
+            [CRITICAL: PERFECT KOREAN TEXT RENDERING]
+            - You MUST render the following exact Korean text: "${overlayText}"
+            - ABSOLUTE PROHIBITION: DO NOT generate broken characters, alien text, typos, or unreadable fonts.
+            - The Korean text must be 100% legible, perfectly spelled, and visually prominent.
+            - 한국어 텍스트("${overlayText}")는 글자 깨짐, 오타, 뭉개짐 없이 100% 완벽하고 선명하게 렌더링되어야 합니다.
             - Font style: Modern, bold, sans-serif.
             - Ensure high contrast between text and background.
-            - **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate and visually appealing.
+            - **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate.
 
             Generate a high-quality blog image fitting the '${stepRole}' description with the text "${overlayText}".
           `;
           
           const parts: any[] = [...refImageParts, { text: imagePrompt }];
 
-          let imgResponse;
-          try {
-            imgResponse = await callWithRetry(() => ai.models.generateContent({
-              model: 'gemini-3-pro-image-preview',
-              contents: { parts },
-              config: {
-                imageConfig: {
-                  aspectRatio: "16:9",
-                  imageSize: "2K"
-                }
+          const imgResponse = await callWithRetry(() => ai.models.generateContent({
+            model: 'gemini-3-pro-image-preview',
+            contents: { parts },
+            config: {
+              imageConfig: {
+                aspectRatio: "16:9",
+                imageSize: "2K"
               }
-            }));
-          } catch (e: any) {
-            const errorMsg = (e?.message || "").toLowerCase();
-            if (errorMsg.includes("permission") || errorMsg.includes("403")) {
-              console.warn("Gemini 3 Pro permission denied, falling back to Gemini 2.5 Flash Image");
-              imgResponse = await callWithRetry(() => ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
-                contents: { parts },
-                config: {
-                  imageConfig: {
-                    aspectRatio: "16:9"
-                  }
-                }
-              }));
-            } else {
-              throw e;
             }
-          }
+          }));
 
           for (const part of imgResponse.candidates?.[0]?.content?.parts || []) {
              if (part.inlineData) {
@@ -1206,35 +1189,16 @@ const App = () => {
             **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate and visually appealing.
          `;
          
-         let thumbResponse;
-         try {
-           thumbResponse = await callWithRetry(() => ai.models.generateContent({
-              model: 'gemini-3-pro-image-preview',
-              contents: { parts: [{ text: thumbPrompt }] },
-               config: {
-                imageConfig: {
-                  aspectRatio: "1:1",
-                  imageSize: "1K"
-                }
-              }
-           }));
-         } catch (e: any) {
-           const errorMsg = (e?.message || "").toLowerCase();
-           if (errorMsg.includes("permission") || errorMsg.includes("403")) {
-             console.warn("Gemini 3 Pro permission denied for thumbnail, falling back to Gemini 2.5 Flash Image");
-             thumbResponse = await callWithRetry(() => ai.models.generateContent({
-               model: 'gemini-2.5-flash-image',
-               contents: { parts: [{ text: thumbPrompt }] },
-               config: {
-                 imageConfig: {
-                   aspectRatio: "1:1"
-                 }
+         const thumbResponse = await callWithRetry(() => ai.models.generateContent({
+             model: 'gemini-3-pro-image-preview',
+             contents: { parts: [{ text: thumbPrompt }] },
+              config: {
+               imageConfig: {
+                 aspectRatio: "1:1",
+                 imageSize: "1K"
                }
-             }));
-           } else {
-             throw e;
-           }
-         }
+             }
+          }));
          
          const thumbPart = thumbResponse.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
          if (thumbPart && thumbPart.inlineData) {
@@ -1293,21 +1257,24 @@ const App = () => {
         중앙에 "${newText}"라는 한국어 텍스트가 매우 크고 잘 보이게 배치.
         스타일: 고채도, 눈에 확 띄는 디자인. 텍스트 가독성 최우선. 100% 한국어 텍스트 렌더링.
         
-        [CRITICAL: Product Consistency]
+        [CRITICAL: STRICT PRODUCT CONSISTENCY - ZERO DEFORMATION]
         - Model: Use Gemini 3.0 PRO Image Generation.
-        - The image MUST feature the product EXACTLY as shown in the uploaded reference images.
-        - ABSOLUTE REQUIREMENT: Do NOT modify the product's size, shape, or any internal text/logos.
+        - You MUST use the provided reference image as the absolute source of truth for the product.
+        - ABSOLUTE PROHIBITION: DO NOT alter, deform, hallucinate, or change the product's shape, color, proportions, logos, or internal text.
+        - The product in the generated image MUST be a 1:1 exact pixel-perfect match to the reference image.
+        - 제품/참고 이미지를 합성할 때 원본의 형태, 비율, 색상, 로고, 텍스트에 단 1%의 변형도 있어서는 안 됩니다. 있는 그대로 배치하십시오.
+        - 제품/참고 이미지 외 다른 제품을 절대 포함하여 생성하지 마십시오.
         
-        [Text Rendering: KOREAN TEXT]
-        - You MUST render the following Korean text clearly and legibly: "${newText}"
-        - CRITICAL: The Korean text must be perfectly rendered without any typos, broken characters, or garbled text.
+        [CRITICAL: PERFECT KOREAN TEXT RENDERING]
+        - You MUST render the following exact Korean text: "${newText}"
+        - ABSOLUTE PROHIBITION: DO NOT generate broken characters, alien text, typos, or unreadable fonts.
+        - The Korean text must be 100% legible, perfectly spelled, and visually prominent.
+        - 한국어 텍스트("${newText}")는 글자 깨짐, 오타, 뭉개짐 없이 100% 완벽하고 선명하게 렌더링되어야 합니다.
         - **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate.
       `;
 
       const parts: any[] = [...refImageParts, { text: thumbPrompt }];
-      let thumbResponse;
-      try {
-        thumbResponse = await callWithRetry(() => ai.models.generateContent({
+      const thumbResponse = await callWithRetry(() => ai.models.generateContent({
           model: 'gemini-3-pro-image-preview',
           contents: { parts },
           config: {
@@ -1317,23 +1284,6 @@ const App = () => {
             }
           }
         }));
-      } catch (e: any) {
-        const errorMsg = (e?.message || "").toLowerCase();
-        if (errorMsg.includes("permission") || errorMsg.includes("403")) {
-          console.warn("Gemini 3 Pro permission denied for thumbnail, falling back to Gemini 2.5 Flash Image");
-          thumbResponse = await callWithRetry(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
-            contents: { parts },
-            config: {
-              imageConfig: {
-                aspectRatio: "1:1"
-              }
-            }
-          }));
-        } else {
-          throw e;
-        }
-      }
 
       const thumbPart = thumbResponse.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
       if (thumbPart && thumbPart.inlineData) {
@@ -1387,23 +1337,26 @@ const App = () => {
         [Content Structure: ${image.stepRole}]
         - Context: ${image.sceneDescription}
         
-        [CRITICAL: Product Consistency]
+        [CRITICAL: STRICT PRODUCT CONSISTENCY - ZERO DEFORMATION]
         - Model: Use Gemini 3.0 PRO Image Generation.
-        - The image MUST feature the '${isBackpack ? 'SnapToGo Multi-Packable Backpack' : 'Q-Rang Carrier'}' EXACTLY as shown in the uploaded reference images.
-        - ABSOLUTE REQUIREMENT: Do NOT modify the product's size, shape, or any internal text/logos found on the reference images.
+        - You MUST use the provided reference image as the absolute source of truth for the product.
+        - ABSOLUTE PROHIBITION: DO NOT alter, deform, hallucinate, or change the product's shape, color, proportions, logos, or internal text.
+        - The product in the generated image MUST be a 1:1 exact pixel-perfect match to the reference image.
+        - 제품/참고 이미지를 합성할 때 원본의 형태, 비율, 색상, 로고, 텍스트에 단 1%의 변형도 있어서는 안 됩니다. 있는 그대로 배치하십시오.
+        - 제품/참고 이미지 외 다른 제품을 절대 포함하여 생성하지 마십시오.
         
-        [Text Rendering: KOREAN TEXT]
-        - You MUST render the following Korean text clearly and legibly in the image: "${newText}"
-        - CRITICAL: The Korean text must be perfectly rendered without any typos, broken characters, or garbled text.
+        [CRITICAL: PERFECT KOREAN TEXT RENDERING]
+        - You MUST render the following exact Korean text: "${newText}"
+        - ABSOLUTE PROHIBITION: DO NOT generate broken characters, alien text, typos, or unreadable fonts.
+        - The Korean text must be 100% legible, perfectly spelled, and visually prominent.
+        - 한국어 텍스트("${newText}")는 글자 깨짐, 오타, 뭉개짐 없이 100% 완벽하고 선명하게 렌더링되어야 합니다.
         - **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate.
 
         Generate a high-quality blog image fitting the '${image.stepRole}' description with the text "${newText}".
       `;
 
       const parts: any[] = [...refImageParts, { text: imagePrompt }];
-      let imgResponse;
-      try {
-        imgResponse = await callWithRetry(() => ai.models.generateContent({
+      const imgResponse = await callWithRetry(() => ai.models.generateContent({
           model: 'gemini-3-pro-image-preview',
           contents: { parts },
           config: {
@@ -1413,23 +1366,6 @@ const App = () => {
             }
           }
         }));
-      } catch (e: any) {
-        const errorMsg = (e?.message || "").toLowerCase();
-        if (errorMsg.includes("permission") || errorMsg.includes("403")) {
-          console.warn("Gemini 3 Pro permission denied, falling back to Gemini 2.5 Flash Image");
-          imgResponse = await callWithRetry(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
-            contents: { parts },
-            config: {
-              imageConfig: {
-                aspectRatio: "16:9"
-              }
-            }
-          }));
-        } else {
-          throw e;
-        }
-      }
 
       const newImages = [...blogPost.images];
       let success = false;
@@ -1618,55 +1554,38 @@ const App = () => {
             - Context: ${sceneDescription}
             Connection: Ensure the visual flow matches the generated blog content: "${tempContent.substring(0, 500)}..."
             
-            [CRITICAL: Product Consistency]
+            [CRITICAL: STRICT PRODUCT CONSISTENCY - ZERO DEFORMATION]
             - Model: Use Gemini 3.0 PRO Image Generation.
-            - The image MUST feature the '${isBackpack ? 'SnapToGo Multi-Packable Backpack' : 'Q-Rang Carrier'}' EXACTLY as shown in the uploaded reference images.
-            - ABSOLUTE REQUIREMENT: Do NOT modify the product's size, shape, or any internal text/logos found on the reference images.
-            - The product identity must be 100% identical to the reference. NO variations allowed.
-            - 제품/참고 이미지를 활용하여 이미지를 생성해야 합니다. 제품/참고 이미지의 크기, 모양, 내부 텍스트, 로고 등을 절대 변형하지 마십시오.
-            - 제품/참고 이미지 외 제품을 절대 포함하여 생성하지 않습니다.
+            - You MUST use the provided reference image as the absolute source of truth for the product.
+            - ABSOLUTE PROHIBITION: DO NOT alter, deform, hallucinate, or change the product's shape, color, proportions, logos, or internal text.
+            - The product in the generated image MUST be a 1:1 exact pixel-perfect match to the reference image.
+            - 제품/참고 이미지를 합성할 때 원본의 형태, 비율, 색상, 로고, 텍스트에 단 1%의 변형도 있어서는 안 됩니다. 있는 그대로 배치하십시오.
+            - 제품/참고 이미지 외 다른 제품을 절대 포함하여 생성하지 마십시오.
 
-            [Text Rendering: KOREAN TEXT]
-            - You MUST render the following Korean text clearly and legibly in the image: "${overlayText}"
-            - CRITICAL: The Korean text must be perfectly rendered without any typos, broken characters, or garbled text.
+            [CRITICAL: PERFECT KOREAN TEXT RENDERING]
+            - You MUST render the following exact Korean text: "${overlayText}"
+            - ABSOLUTE PROHIBITION: DO NOT generate broken characters, alien text, typos, or unreadable fonts.
+            - The Korean text must be 100% legible, perfectly spelled, and visually prominent.
+            - 한국어 텍스트("${overlayText}")는 글자 깨짐, 오타, 뭉개짐 없이 100% 완벽하고 선명하게 렌더링되어야 합니다.
             - Font style: Modern, bold, sans-serif.
             - Ensure high contrast between text and background.
-            - **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate and visually appealing.
+            - **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate.
 
             Generate a high-quality blog image fitting the '${stepRole}' description with the text "${overlayText}".
           `;
           
           const parts: any[] = [...refImageParts, { text: imagePrompt }];
 
-          let imgResponse;
-          try {
-            imgResponse = await callWithRetry(() => ai.models.generateContent({
-              model: 'gemini-3-pro-image-preview',
-              contents: { parts },
-              config: {
-                imageConfig: {
-                  aspectRatio: "16:9",
-                  imageSize: "2K"
-                }
+          const imgResponse = await callWithRetry(() => ai.models.generateContent({
+            model: 'gemini-3-pro-image-preview',
+            contents: { parts },
+            config: {
+              imageConfig: {
+                aspectRatio: "16:9",
+                imageSize: "2K"
               }
-            }));
-          } catch (e: any) {
-            const errorMsg = (e?.message || "").toLowerCase();
-            if (errorMsg.includes("permission") || errorMsg.includes("403")) {
-              console.warn("Gemini 3 Pro permission denied, falling back to Gemini 2.5 Flash Image");
-              imgResponse = await callWithRetry(() => ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
-                contents: { parts },
-                config: {
-                  imageConfig: {
-                    aspectRatio: "16:9"
-                  }
-                }
-              }));
-            } else {
-              throw e;
             }
-          }
+          }));
 
           for (const part of imgResponse.candidates?.[0]?.content?.parts || []) {
              if (part.inlineData) {
@@ -1695,35 +1614,16 @@ const App = () => {
             CRITICAL: Perfect Korean text rendering.
             **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate and visually appealing.
          `;
-         let thumbResponse;
-         try {
-           thumbResponse = await callWithRetry(() => ai.models.generateContent({
-              model: 'gemini-3-pro-image-preview',
-              contents: { parts: [{ text: thumbPrompt }] },
-               config: {
-                imageConfig: {
-                  aspectRatio: "1:1",
-                  imageSize: "1K"
-                }
-              }
-           }));
-         } catch (e: any) {
-           const errorMsg = (e?.message || "").toLowerCase();
-           if (errorMsg.includes("permission") || errorMsg.includes("403")) {
-             console.warn("Gemini 3 Pro permission denied, falling back to Gemini 2.5 Flash Image");
-             thumbResponse = await callWithRetry(() => ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
-                contents: { parts: [{ text: thumbPrompt }] },
-                 config: {
-                  imageConfig: {
-                    aspectRatio: "1:1"
-                  }
-                }
-             }));
-           } else {
-             throw e;
-           }
-         }
+         const thumbResponse = await callWithRetry(() => ai.models.generateContent({
+             model: 'gemini-3-pro-image-preview',
+             contents: { parts: [{ text: thumbPrompt }] },
+              config: {
+               imageConfig: {
+                 aspectRatio: "1:1",
+                 imageSize: "1K"
+               }
+             }
+          }));
          
          const thumbPart = thumbResponse.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
          if (thumbPart && thumbPart.inlineData) {
@@ -1789,22 +1689,24 @@ const App = () => {
         - Quality: 8K resolution, sharp details.
         - Tone: Trustworthy Business Tone.
         
-        [CRITICAL: Product Consistency]
+        [CRITICAL: STRICT PRODUCT CONSISTENCY - ZERO DEFORMATION]
         - Model: Use Gemini 3.0 PRO Image Generation.
-        - The image MUST feature the product from the uploaded reference images if applicable.
-        - ABSOLUTE REQUIREMENT: Do NOT modify the product's size, shape, or any internal text/logos found on the reference images.
-        - The product identity must be 100% identical to the reference. NO variations allowed.
-        - 제품/참고 이미지를 활용하여 이미지를 생성해야 합니다. 제품/참고 이미지의 크기, 모양, 내부 텍스트, 로고 등을 절대 변형하지 마십시오.
+        - You MUST use the provided reference image as the absolute source of truth for the product.
+        - ABSOLUTE PROHIBITION: DO NOT alter, deform, hallucinate, or change the product's shape, color, proportions, logos, or internal text.
+        - The product in the generated image MUST be a 1:1 exact pixel-perfect match to the reference image.
+        - 제품/참고 이미지를 합성할 때 원본의 형태, 비율, 색상, 로고, 텍스트에 단 1%의 변형도 있어서는 안 됩니다. 있는 그대로 배치하십시오.
+        - 제품/참고 이미지 외 다른 제품을 절대 포함하여 생성하지 마십시오.
 
-        [Text Rendering: KOREAN TEXT]
-        - **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate and visually appealing.
+        [CRITICAL: PERFECT KOREAN TEXT RENDERING]
+        - ABSOLUTE PROHIBITION: DO NOT generate broken characters, alien text, typos, or unreadable fonts.
+        - Any Korean text must be 100% legible, perfectly spelled, and visually prominent.
+        - 한국어 텍스트는 글자 깨짐, 오타, 뭉개짐 없이 100% 완벽하고 선명하게 렌더링되어야 합니다.
+        - **IMPORTANT**: Use Gemini 3.0 PRO's advanced text rendering capabilities to ensure the Korean text is 100% accurate.
       `;
       
       const parts: any[] = [...refImageParts, { text: imagePrompt }];
 
-      let imgResponse;
-      try {
-        imgResponse = await callWithRetry(() => ai.models.generateContent({
+      const imgResponse = await callWithRetry(() => ai.models.generateContent({
           model: 'gemini-3-pro-image-preview',
           contents: { parts },
           config: {
@@ -1814,23 +1716,6 @@ const App = () => {
             }
           }
         }));
-      } catch (e: any) {
-        const errorMsg = (e?.message || "").toLowerCase();
-        if (errorMsg.includes("permission") || errorMsg.includes("403")) {
-          console.warn("Gemini 3 Pro permission denied for custom image, falling back to Gemini 2.5 Flash Image");
-          imgResponse = await callWithRetry(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
-            contents: { parts },
-            config: {
-              imageConfig: {
-                aspectRatio: "16:9"
-              }
-            }
-          }));
-        } else {
-          throw e;
-        }
-      }
 
       const newImages = [...(blogPost?.images || [])];
       for (const part of imgResponse.candidates?.[0]?.content?.parts || []) {
@@ -1934,6 +1819,12 @@ const App = () => {
                     ✏️ 텍스트 수정
                   </button>
                   <button 
+                    style={{ ...styles.actionButton, backgroundColor: '#f59e0b' }}
+                    onClick={() => handleRegenerateSingleImage(currentIndex, images[currentIndex].overlayText || "")}
+                  >
+                    🔄 다시 생성
+                  </button>
+                  <button 
                     style={styles.actionButton}
                     onClick={() => downloadImage(images[currentIndex].url, `blog_image_${currentIndex + 1}.png`)}
                   >
@@ -1990,6 +1881,12 @@ const App = () => {
                     }}
                   >
                     ✏️ 텍스트 수정
+                  </button>
+                  <button 
+                    style={{ ...styles.actionButton, backgroundColor: '#f59e0b' }}
+                    onClick={() => handleRegenerateSingleImage(currentIndex, images[currentIndex].overlayText || "")}
+                  >
+                    🔄 다시 생성
                   </button>
                   <button 
                     style={styles.actionButton}
@@ -2878,6 +2775,12 @@ const App = () => {
                         }}
                       >
                         ✏️ 텍스트 수정
+                      </button>
+                      <button 
+                        style={{ ...styles.actionButton, backgroundColor: '#f59e0b' }}
+                        onClick={() => handleRegenerateThumbnail(blogPost.thumbnail?.overlayText || "")}
+                      >
+                        🔄 다시 생성
                       </button>
                       <button 
                         style={styles.actionButton}
